@@ -1,11 +1,11 @@
-Title: OpenStack SA Training - Course Manual<br>
+Title: OpenStack Training - Course Manual<br>
 Author: Rhys Oxenham <roxenham@redhat.com><br>
 Date: March 2013
 
 #**Course Contents**#
 
 1. **Configuring your host machine for OpenStack**
-2. **Deploying RHEL virtual-machine instances**
+2. **Deploying virtual-machine instances as base infrastructure**
 3. **Installation and configuration of Keystone (Identity Service)**
 4. **Installation and configuration of Glance (Image Service)**
 5. **Installation and configuration of Cinder (Volume Service)**
@@ -13,12 +13,13 @@ Date: March 2013
 7. **Installation and configuration of Horizon (OpenStack Frontend)**
 8. **Deployment of first test instances**
 9. **Configuring Nova to provide metadata service for customisation**
-10. **Using Cinder to provide persistent data storage**
-11. **Installation and configuration of Quantum (Networking Services)**
-12. **Installation and configuration of Swift (Object Storage)**
-12. **Deploying and monitoring of instance collections using Heat**
-13. **Deploying charge-back and usage monitoring with Celiometer**
-14. **Implementing automated deployments with PackStack**
+10. **Deploying fully customised builds using Puppet/Foreman**
+11. **Using Cinder to provide persistent data storage**
+12. **Installation and configuration of Quantum (Networking Services)**
+13. **Installation and configuration of Swift (Object Storage)**
+14. **Deploying and monitoring of instance collections using Heat**
+15. **Deploying charge-back and usage monitoring with Celiometer**
+16. **Implementing automated deployments with PackStack**
 
 <!--BREAK-->
 
@@ -26,9 +27,11 @@ Date: March 2013
 
 ##**Assumptions**
 
-This manual assumes that you're attending instructor-led training classes and that this manual will provide a step-by-step guide on how to complete the labs. Prior knowledge gained from the instructor presentations is expected, however for those wanting to complete this training via their own self-learning, a description is provided.
+This manual assumes that you're attending instructor-led training classes and that this material be used as a step-by-step guide on how to successfully complete the lab objectives. Prior knowledge gained from the instructor presentations is highly recommended, however for those wanting to complete this training via their own self-learning, a description at each section is available as well as a copy of the course slides.
 
-It is also assumed that a Linux-based hypervisor is being used, ideally KVM/libvirt but it would also be possible to complete this training with alternative platforms, the requirements where necessary are outlined throughout the course. It is highly recommended that the physical machine(s) being used to host the OpenStack environment have plenty of RAM; the course advises that four virtual machines are created, each with their own varying degrees of compute resource requirements. 
+The course was written with the assumption that you're wanting to deploy OpenStack on-top of a Red Hat based platform, e.g. Red Hat Enterprise Linux or Fedora, and is written specifically for Red Hat's enterprise OpenStack Distribution (http://www.redhat.com/openstack) although the vast majority of the concepts and instructions will apply to other distributions. 
+
+The use of a Linux-based hypervisor (ideally using KVM/libvirt) is highly recommended although not essential, the requirements where necessary are outlined throughout the course but for deployment on alternative platforms it is assumed that this is already configured by yourself. The course advises that four virtual machines are created, each with their own varying degrees of compute resource requirements so please ensure that enough resource is available. Please note that this course helps you deploy a test-bed for knowledge purposes, it's extremely unlikely that any form of production environment would be deployed in this manor.
 
 By undertaking this course you understand that I take no responsibility for any losses incurred and that you are following the instructions at your own free will. A working knowledge of virtualisation, the Linux command-line, networking, storage and scripting will be highly advantageous for anyone following this guide.
 
@@ -49,3 +52,15 @@ OpenStack is made up of many individual components in a modular architecture tha
 TODO: Finish this ;-)
 
 
+<!--BREAK-->
+
+
+#**Lab 1: Configuring your host machine for OpenStack**
+
+Estimated completion time: 20 minutes
+
+**Prerequisites:**
+* A hypervisor that supports NAT networking (ideally physical)
+* A DVD iso of Red Hat Enterprise Linux 6.4 x86_64
+* An active subscription to Red Hat's OpenStack Distribution -or- packages locally available
+* 
