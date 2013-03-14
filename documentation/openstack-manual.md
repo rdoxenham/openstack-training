@@ -57,10 +57,24 @@ TODO: Finish this ;-)
 
 #**Lab 1: Configuring your host machine for OpenStack**
 
-Estimated completion time: 20 minutes
-
 **Prerequisites:**
-* A hypervisor that supports NAT networking (ideally physical)
+* A hypervisor that supports NAT networking (ideally physical for performance)
 * A DVD iso of Red Hat Enterprise Linux 6.4 x86_64
 * An active subscription to Red Hat's OpenStack Distribution -or- packages locally available
-* 
+
+**Tools used:**
+* SSH
+* Virtual Machine Manager (KVM/libvirt) -or- Virtualisation platform of choice
+* yum (for updates) 
+
+
+##**Introduction**
+
+This initial lab will enable you to prepare a local environment for deploying virtual machine instances that OpenStack will be installed onto. There are a number of tasks that need to be carried out in order to prepare the environment. The OpenStack nodes will need a network to communicate with each other, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
+
+Estimated completion time: 10 minutes
+
+
+##**Preparing the environment**
+
+Test
