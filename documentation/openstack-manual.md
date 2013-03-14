@@ -1,8 +1,8 @@
-Title: OpenStack SA Training - Lab Manual<br>
+Title: OpenStack SA Training - Course Manual<br>
 Author: Rhys Oxenham <roxenham@redhat.com><br>
 Date: March 2013
 
-#**Lab Contents**#
+#**Course Contents**#
 
 1. **Configuring your host machine for OpenStack**
 2. **Deploying RHEL virtual-machine instances**
@@ -32,5 +32,19 @@ It is also assumed that a Linux-based hypervisor is being used, ideally KVM/libv
 By undertaking this course you understand that I take no responsibility for any losses incurred and that you are following the instructions at your own free will. A working knowledge of virtualisation, the Linux command-line, networking, storage and scripting will be highly advantageous for anyone following this guide.
 
 ##**What to expect from the course**
+
+Upon completion of the course you should fully understand what OpenStack is designed to do, how the components/building-blocks fit together to provide consumable cloud resources and how to install/configure them. You should feel comfortable designing OpenStack-based architectures and how to position the technology. The course goes into a considerable amount of detail but is far from comprenensive; the target of the course is to provide a solid foundation that can be built upon based on the individuals requirements.
+
+<!--BREAK-->
+
+#**The OpenStack Project**
+
+OpenStack is an open-source Infrastructure-as-a-Service (IaaS) initiative for building and managing large groups of compute instances in an on-demand massively scale-out cloud computing environment. The OpenStack project, led by the OpenStack Foundation has many goals, most importantly is it's initiative to support interoperability between cloud services and to provide all of the building blocks required to establish a cloud that mimics what a public cloud offers you. The difference being, you get the benefits of being able to stand it up behind a corporate firewall.
+
+The OpenStack project has had a significant impact on the IT industry, its adoption has been very wide spread and has become the basis of the cloud offerings from vendors such as HP, IBM and Dell. Other organisations such as Red Hat, Ubuntu and Rackspace are putting together 'distributions' of OpenStack and offering it to their customers as a supported platform for building a cloud; it's truly seen as the "Linux of the Cloud". The project currently has contributions from developers all over the world, vendors are actively developing plugins and contributing code to ensure that OpenStack can exploit the latest features that their software/hardware exposes.
+
+OpenStack is made up of many individual components in a modular architecture that can be put together to create different types of clouds depending on the requirements of the organisation, e.g. pure-compute or cloud storage.
+
+TODO: Finish this ;-)
 
 
