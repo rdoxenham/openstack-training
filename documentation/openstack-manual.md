@@ -18,6 +18,7 @@ Date: March 2013
 12. **Installation and configuration of Swift (Object Storage)**
 12. **Deploying and monitoring of instance collections using Heat**
 13. **Deploying charge-back and usage monitoring with Celiometer**
+14. **Implementing automated deployments with PackStack**
 
 <!--BREAK-->
 
