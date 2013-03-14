@@ -21,4 +21,16 @@ Date: March 2013
 
 <!--BREAK-->
 
-#**OpenStack Overview**
+#**OpenStack Training Overview**
+
+##**Assumptions**
+
+This manual assumes that you're attending instructor-led training classes and that this manual will provide a step-by-step guide on how to complete the labs. Prior knowledge gained from the instructor presentations is expected, however for those wanting to complete this training via their own self-learning, a description is provided.
+
+It is also assumed that a Linux-based hypervisor is being used, ideally KVM/libvirt but it would also be possible to complete this training with alternative platforms, the requirements where necessary are outlined throughout the course. It is highly recommended that the physical machine(s) being used to host the OpenStack environment have plenty of RAM; the course advises that four virtual machines are created, each with their own varying degrees of compute resource requirements. 
+
+By undertaking this course you understand that I take no responsibility for any losses incurred and that you are following the instructions at your own free will. A working knowledge of virtualisation, the Linux command-line, networking, storage and scripting will be highly advantageous for anyone following this guide.
+
+##**What to expect from the course**
+
+
