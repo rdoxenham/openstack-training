@@ -71,7 +71,7 @@ TODO: Finish this ;-)
 
 This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure. There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
 
-Estimated completion time: 10 minutes
+Estimated completion time: 15 minutes
 
 
 ##**Preparing the environment**
@@ -89,3 +89,27 @@ Next, ensure that libvirt and KVM are installed and running.
 	# yum install libvirt qemu-kvm virt-manager virt-install -y && chkconfig libvirtd on && service libvirtd start
 
 If you already have an existing virtual machine infrastructure present on your machine, you may want to back-up your configurations and ensure that virtual machines are shutdown to reduce contention for system resources. This guide assumes that you have completed this and you have a more-or-less vanilla libvirt configuration. 
+
+It's important that the 'default' network is defined in a specific way, you should have the following returned:
+
+	# virsh net-info default
+	Name            default
+	UUID            d81bb3f3-93cc-4269-81c1-f11d6c404fa0
+	Active:         yes
+	Persistent:     yes
+	Autostart:      yes
+	Bridge:         virbr0
+
+If this is not present as above (with the exception of a different uuid), you'll need to backup your existing default network configuration and recreate it as follows-
+
+	# mkdir -p /root/libvirt-backup/ && mv /var/lib/libvirt/network/default.xml /root/libvirt-backup/
+	# virsh net-destroy default && virsh net-undefine default
+	# virsh net-create /usr/share/libvirt/networks/default.xml
+
+Finally, ensure that the bridge is setup correctly on the host:
+
+	# brctl show virbr0
+	...
+	virbr0		8000.5254005a0a54	yes		virbr0-nic
+
+	# virsh net-info default
