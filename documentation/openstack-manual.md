@@ -67,7 +67,6 @@ TODO: Finish this ;-)
 * Virtual Machine Manager (KVM/libvirt)
 * yum (for updates) 
 
-
 ##**Introduction**
 
 This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure. There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
@@ -77,4 +76,16 @@ Estimated completion time: 10 minutes
 
 ##**Preparing the environment**
 
+In order to be able to use virtual machines we need to make sure that we have the required hardware and software dependencies.
 
+Firstly, check your physical machine supports accelerated virtualisation:
+
+	# egrep '(vmx|svm)' /proc/cpuinfo
+
+Note: You should see either 'vmx' or 'svm' highlighted for you. If it returns nothing, accelerated virtualisation is not present (if may be disabled in the BIOS).
+
+Next, ensure that libvirt and KVM are installed and running.
+
+	# yum install libvirt qemu-kvm virt-manager virt-install -y && chkconfig libvirtd on && service libvirtd start
+
+If you already have an existing virtual machine infrastructure present on your machine, you may want to back-up your configurations and ensure that virtual machines are shutdown to reduce contention for system resources. This guide assumes that you have completed this and you have a more-or-less vanilla libvirt configuration. 
