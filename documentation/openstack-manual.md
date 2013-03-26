@@ -139,36 +139,32 @@ To save time, we'll install a single virtual machine and just clone it afterward
 
 	# virt-install --name node1 --ram 1000 --file /var/lib/libvirt/images/node1.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
-		--os-variant rhel6 --network network:default
+		--os-variant rhel6 --network network:default,mac=52:54:00:00:00:01
 	# virt-viewer node1
 
 I would advise that you choose a basic or minimal installation option and don't install any window managers, as these are virtual machines we want to keep as much resource as we can available, plus a graphical view is not required. Partition layouts can be set to default at this stage also, just make sure the time-zone is set correctly and that you provide a root password. When asked for a hostname, I suggest you don't use anything unique, just specify "server" or "node" as we will be cloning and want things to be 
 
-After the machine has finished installing it will automatically be shut-down, we have to 'sysprep' it to make sure that it's ready to be cloned, this removes any "hardware"-specific elements so that things like networking come up as if they were created individually-
+After the machine has finished installing it will automatically be shut-down, we have to 'sysprep' it to make sure that it's ready to be cloned, this removes any "hardware"-specific elements so that things like networking come up as if they were created individually. In addition, one step ensures that networking comes up at boot time which it won't do by default if it wasn't chosen in the installer.
 
 	# yum install libguestfs-tools -y && virt-sysprep -d node1
 	...
+
+	# virt-edit -d node1 /etc/sysconfig/network-scripts/ifcfg-eth0 -e 's/^ONBOOT=.*/ONBOOT="yes"/'
 	
-	# virt-clone -o node1 -n node2 -f /var/lib/libvirt/images/node2.img
+	# virt-clone -o node1 -n node2 -f /var/lib/libvirt/images/node2.img --mac 52:54:00:00:00:02
 	Allocating 'node2.img'
 
 	Clone 'node2' created successfully.
-	# virt-clone -o node1 -n node3 -f /var/lib/libvirt/images/node3.img
+	# virt-clone -o node1 -n node3 -f /var/lib/libvirt/images/node3.img --mac 52:54:00:00:00:03
 	Allocating 'node3.img'
 
 	Clone 'node3' created successfully.
-	# virt-clone -o node1 -n node4 -f /var/lib/libvirt/images/node4.img
+	# virt-clone -o node1 -n node4 -f /var/lib/libvirt/images/node4.img --mac 52:54:00:00:00:04
 	Allocating 'node4.img'
 
 	Clone 'node4' created successfully.
 
-Finally, as an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. To do this we need to discover the MAC addresses for our recently created guests:
-
-	# virsh domiflist node1 | awk '{print $5}'
-
-	(Repeat this step for all guests, making note of the MAC addresses listed)
-
-Then edit the default network to accomodate for the changes-
+Finally, as an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
 
 	# virsh net-destroy default
 	# virsh net-edit default
@@ -186,10 +182,10 @@ Then edit the default network to accomodate for the changes-
   	<ip address='192.168.122.1' netmask='255.255.255.0'>
     		<dhcp>
       			<range start='192.168.122.2' end='192.168.122.100' />
-	      		<host mac='52:54:00:fd:e7:03' name='node1' ip='192.168.122.101' />
-      			<host mac='52:54:00:c4:b7:f6' name='node2' ip='192.168.122.102' />
-      			<host mac='52:54:00:81:84:d6' name='node3' ip='192.168.122.103' />
-      			<host mac='52:54:00:6a:9b:1a' name='node4' ip='192.168.122.104' />
+	      		<host mac='52:54:00:00:00:01' name='node1' ip='192.168.122.101' />
+      			<host mac='52:54:00:00:00:02' name='node2' ip='192.168.122.102' />
+      			<host mac='52:54:00:00:00:03' name='node3' ip='192.168.122.103' />
+      			<host mac='52:54:00:00:00:04' name='node4' ip='192.168.122.104' />
     		</dhcp>
   	</ip>
 
@@ -211,4 +207,13 @@ Note: It's possible to configure the guests manually with static IP addresses af
 
 	# system-config-network
 
-Once the above steps have been completed, you'll need to start your machines, login and make some minor adjustments
+For ease of connection to your virtual machine instances, it would be prudent to add the machines to your /etc/hosts file-
+
+	# cat >> /etc/hosts <<EOF
+	192.168.122.101 node1
+	192.168.122.102 node2
+	192.168.122.103 node3
+	192.168.122.104 node4
+	EOF
+
+#**Lab 3: Installation and configuration of Keystone (Identity Service)**
