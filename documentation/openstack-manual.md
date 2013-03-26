@@ -59,13 +59,9 @@ TODO: Finish this ;-)
 
 **Prerequisites:**
 * A physical machine installed with either Fedora 18/x86_64 or Red Hat Enterprise Linux 6/x86_64
-* A DVD iso of Red Hat Enterprise Linux 6.4 x86_64
-* An active subscription to Red Hat's OpenStack Distribution -or- package repository available locally
 
 **Tools used:**
-* SSH
-* Virtual Machine Manager (KVM/libvirt)
-* yum (for updates) 
+* virsh 
 
 ##**Introduction**
 
@@ -90,7 +86,7 @@ Next, ensure that libvirt and KVM are installed and running.
 
 If you already have an existing virtual machine infrastructure present on your machine, you may want to back-up your configurations and ensure that virtual machines are shutdown to reduce contention for system resources. This guide assumes that you have completed this and you have a more-or-less vanilla libvirt configuration. 
 
-It's important that the 'default' network is defined in a specific way, you should have the following returned:
+It's important that the 'default' network is defined in a specific way for the guide to be successful:
 
 	# virsh net-info default
 	Name            default
@@ -100,7 +96,7 @@ It's important that the 'default' network is defined in a specific way, you shou
 	Autostart:      yes
 	Bridge:         virbr0
 
-If this is not present as above (with the exception of a different uuid), you'll need to backup your existing default network configuration and recreate it as follows-
+If this is not present as above (with the exception of a different uuid), it's recommended that you backup your existing default network configuration and recreate it as follows-
 
 	# mkdir -p /root/libvirt-backup/ && mv /var/lib/libvirt/network/default.xml /root/libvirt-backup/
 	# virsh net-destroy default && virsh net-undefine default
@@ -108,8 +104,111 @@ If this is not present as above (with the exception of a different uuid), you'll
 
 Finally, ensure that the bridge is setup correctly on the host:
 
-	# brctl show virbr0
+	# brctl show
 	...
 	virbr0		8000.5254005a0a54	yes		virbr0-nic
 
 	# virsh net-info default
+	(See above for correct output)
+
+
+#**Lab 2: Deploying virtual machine instances as base infrastructure**
+
+**Prerequisites:**
+* A physical machine configured with a NAT'd network allocated for hosting virtual machines
+* An active subscription to Red Hat's OpenStack Distribution -or- package repositories available locally
+
+**Tools used:**
+* SSH
+* virt command-line tools (e.g. virsh, virt-install, virt-viewer)
+
+##**Introduction**
+
+OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing all of the functions, or a complete OpenStack cloud contained within itself. This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are two main 'roles' for a machine within the cluster, a 'cloud conductor' and a 'compute node'. A 'cloud conductor' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. Whilst a 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start instances.
+
+This guide establishes four distinct virtual machines which will make up the core components, their individual purposes will not be explained in this section, the purpose of this lab is to quickly provision these machines as the infrastructure that our OpenStack cluster will be based upon.
+
+Estimated completion time: 30 minutes
+
+
+##**Preparing the base content**
+
+Assuming that you have a RHEL 6 x86_64 DVD iso available locally, you'll need to provide it for the installation. Alternatively, if you want to install via the network you can do so by using the '--location http://<path to installation tree>' tag within virt-install.
+
+To save time, we'll install a single virtual machine and just clone it afterwards, that way they're all identical.
+
+	# virt-install --name node1 --ram 1000 --file /var/lib/libvirt/images/node1.img \
+		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
+		--os-variant rhel6 --network network:default
+	# virt-viewer node1
+
+I would advise that you choose a basic or minimal installation option and don't install any window managers, as these are virtual machines we want to keep as much resource as we can available, plus a graphical view is not required. Partition layouts can be set to default at this stage also, just make sure the time-zone is set correctly and that you provide a root password. When asked for a hostname, I suggest you don't use anything unique, just specify "server" or "node" as we will be cloning and want things to be 
+
+After the machine has finished installing it will automatically be shut-down, we have to 'sysprep' it to make sure that it's ready to be cloned, this removes any "hardware"-specific elements so that things like networking come up as if they were created individually-
+
+	# yum install libguestfs-tools -y && virt-sysprep -d node1
+	...
+	
+	# virt-clone -o node1 -n node2 -f /var/lib/libvirt/images/node2.img
+	Allocating 'node2.img'
+
+	Clone 'node2' created successfully.
+	# virt-clone -o node1 -n node3 -f /var/lib/libvirt/images/node3.img
+	Allocating 'node3.img'
+
+	Clone 'node3' created successfully.
+	# virt-clone -o node1 -n node4 -f /var/lib/libvirt/images/node4.img
+	Allocating 'node4.img'
+
+	Clone 'node4' created successfully.
+
+Finally, as an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. To do this we need to discover the MAC addresses for our recently created guests:
+
+	# virsh domiflist node1 | awk '{print $5}'
+
+	(Repeat this step for all guests, making note of the MAC addresses listed)
+
+Then edit the default network to accomodate for the changes-
+
+	# virsh net-destroy default
+	# virsh net-edit default
+
+	... change the following section...
+
+  	<ip address='192.168.122.1' netmask='255.255.255.0'>
+    		<dhcp>
+      			<range start='192.168.122.2' end='192.168.122.254' />
+    		</dhcp>
+  	</ip>
+
+	...to this...
+
+  	<ip address='192.168.122.1' netmask='255.255.255.0'>
+    		<dhcp>
+      			<range start='192.168.122.2' end='192.168.122.100' />
+	      		<host mac='52:54:00:fd:e7:03' name='node1' ip='192.168.122.101' />
+      			<host mac='52:54:00:c4:b7:f6' name='node2' ip='192.168.122.102' />
+      			<host mac='52:54:00:81:84:d6' name='node3' ip='192.168.122.103' />
+      			<host mac='52:54:00:6a:9b:1a' name='node4' ip='192.168.122.104' />
+    		</dhcp>
+  	</ip>
+
+	(Use 'i' to edit and when finished press escape and ':wq!')
+
+Then, to save changes, run:
+
+	# virsh net-start default
+
+Note: It's possible to configure the guests manually with static IP addresses after the machine has booted up, note that you'll have to use virt-viewer to access the console first
+
+	# virt-viewer nodeX
+
+	-inside the guest-
+
+	# vi /etc/sysconfig/network-scripts/ifcfg-eth0
+
+	-or-
+
+	# system-config-network
+
+Once the above steps have been completed, you'll need to start your machines, login and make some minor adjustments
