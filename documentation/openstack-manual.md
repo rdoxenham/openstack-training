@@ -61,7 +61,8 @@ TODO: Finish this ;-)
 * A physical machine installed with either Fedora 18/x86_64 or Red Hat Enterprise Linux 6/x86_64
 
 **Tools used:**
-* virsh 
+* virsh
+* yum 
 
 ##**Introduction**
 
@@ -100,7 +101,8 @@ If this is not present as above (with the exception of a different uuid), it's r
 
 	# mkdir -p /root/libvirt-backup/ && mv /var/lib/libvirt/network/default.xml /root/libvirt-backup/
 	# virsh net-destroy default && virsh net-undefine default
-	# virsh net-create /usr/share/libvirt/networks/default.xml
+	# virsh net-define /usr/share/libvirt/networks/default.xml
+	# virsh net-start default
 
 Finally, ensure that the bridge is setup correctly on the host:
 
@@ -112,14 +114,12 @@ Finally, ensure that the bridge is setup correctly on the host:
 	(See above for correct output)
 
 
-#**Lab 2: Deploying virtual machine instances as base infrastructure**
+#**Lab 2: Deploying virtual machines**
 
 **Prerequisites:**
 * A physical machine configured with a NAT'd network allocated for hosting virtual machines
-* An active subscription to Red Hat's OpenStack Distribution -or- package repositories available locally
 
 **Tools used:**
-* SSH
 * virt command-line tools (e.g. virsh, virt-install, virt-viewer)
 
 ##**Introduction**
@@ -136,6 +136,8 @@ Estimated completion time: 30 minutes
 Assuming that you have a RHEL 6 x86_64 DVD iso available locally, you'll need to provide it for the installation. Alternatively, if you want to install via the network you can do so by using the '--location http://<path to installation tree>' tag within virt-install.
 
 To save time, we'll install a single virtual machine and just clone it afterwards, that way they're all identical.
+
+##**Creating virtual machines**
 
 	# virt-install --name node1 --ram 1000 --file /var/lib/libvirt/images/node1.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
@@ -164,7 +166,7 @@ After the machine has finished installing it will automatically be shut-down, we
 
 	Clone 'node4' created successfully.
 
-Finally, as an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
+As an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
 
 	# virsh net-destroy default
 	# virsh net-edit default
@@ -216,4 +218,63 @@ For ease of connection to your virtual machine instances, it would be prudent to
 	192.168.122.104 node4
 	EOF
 
+Finally, start your virtual machines:
+
+	# virsh start node1 && virsh start node2 && virsh start node3 && virsh start node4
+
 #**Lab 3: Installation and configuration of Keystone (Identity Service)**
+
+**Prerequisites:**
+* One of the four virtual machines created in the previous lab
+* An active subscription to Red Hat's OpenStack Distribution -or- package repositories available locally
+
+**Tools used:**
+* SSH
+* subscription-manager
+
+##**Introduction**
+
+Keystone is the identity management component of OpenStack; it supports token-based, username/password and AWS-style logins and is responsible for providing a centralised directory of users mapped to the services they are granted to use. It acts as the common authentication system across the whole of the OpenStack environment and integrates well with existing backend directory services such as LDAP. In addition to providing a centralised repository of users, Keystone provides a catalogue of services deployed in the environment, allowing service discovery with their endpoints (or API entry-points) for access.
+
+As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (node1) and turn this into a 'cloud conductor' in which, Keystone will be a crucial part of that infrastructure.
+
+##**Preparing the machine**
+
+	# ssh root@node1
+
+This system was deployed via the DVD, so we'll need to register and subscribe this system to the OpenStack channels. Note that if you have repositories available locally, you can skip these next few steps.
+
+	# subscription-manager register
+	(Enter your Red Hat Network credentials)
+
+Next you need to subscribe your system to both a Red Hat Enterprise Linux pool and the OpenStack Enterprise pools-
+
+	# subscription-manager list --available
+	(Discover pool ID's for both)
+
+	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+
+At this stage it would be prudent to update to the latest package set available for the base OS:
+
+	# yum update -y
+
+We need to enable the OpenStack repositories next, depending on whether you chose a minimal or basic installation for RHEL, you may already have this package:
+
+	# yum install yum-utils -y
+
+Either way, to enable the repository-
+
+	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+	
+	# reboot
+
+
+##**Installing Keystone**
+
+Now that the system is set-up for package repositories, has been fully updated and has been rebooted, we can proceed with the installation of OpenStack Keystone. 
+
+	# yum install openstack-keystone openstack-utils dnsmasq-utils -y
+
+By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step.
+
+	# openstack-db --init --service keystone
