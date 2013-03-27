@@ -234,7 +234,7 @@ Finally, start your virtual machines:
 
 ##**Introduction**
 
-Keystone is the identity management component of OpenStack; it supports token-based, username/password and AWS-style logins and is responsible for providing a centralised directory of users mapped to the services they are granted to use. It acts as the common authentication system across the whole of the OpenStack environment and integrates well with existing backend directory services such as LDAP. In addition to providing a centralised repository of users, Keystone provides a catalogue of services deployed in the environment, allowing service discovery with their endpoints (or API entry-points) for access.
+Keystone is the identity management component of OpenStack; it supports token-based, username/password and AWS-style logins and is responsible for providing a centralised directory of users mapped to the services they are granted to use. It acts as the common authentication system across the whole of the OpenStack environment and integrates well with existing backend directory services such as LDAP. In addition to providing a centralised repository of users, Keystone provides a catalogue of services deployed in the environment, allowing service discovery with their endpoints (or API entry-points) for access. Keystone is responsible for governance in an OpenStack cloud, it provides a policy framework for allowing fine grained access control over various components and responsibilities in the cloud environment.
 
 As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (node1) and turn this into a 'cloud conductor' in which, Keystone will be a crucial part of that infrastructure.
 
@@ -275,6 +275,55 @@ Now that the system is set-up for package repositories, has been fully updated a
 
 	# yum install openstack-keystone openstack-utils dnsmasq-utils -y
 
-By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step.
+By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step. The script will ask you to choose a new password for MySQL, make sure you remember this!
 
 	# openstack-db --init --service keystone
+
+Keystone uses tokens to authenticate users, even when using username/passwords tokens are used. Once a users identity has been verified with an account/password pair, a short-lived token is issued, these tokens are used by OpenStack components whilst working on behalf of a user. When setting up Keystone we need to create a default administration token which is set in the /etc/keystone/keystone.conf file. We need to generate this and populate the configuration file with this value so that it persists, thankfully there's a simple way of doing this-
+
+	# export SERVICE_TOKEN=$(openssl rand -hex 10)
+	# export SERVICE_ENDPOINT=http://192.168.122.101:35357/v2.0
+	# echo $SERVICE_TOKEN > /tmp/ks_admin_token
+
+	# openstack-config --set /etc/keystone/keystone.conf DEFAULT admin_token $SERVICE_TOKEN
+
+Note: As we have exported our SERVICE_TOKEN and SERVICE_ENDPOINT, it will allow us to run keystone commands without specifying a username/password (or token) combination via the command-line; later in this lab we'll write an rc which avoids us having to provide them to administer keystone.
+
+At this point, we can start the Keystone service and enable it at boot-time-
+
+	# service openstack-keystone start
+	# chkconfig openstack-keystone on
+
+Recall that Keystone provides the registry of services and their endpoints for interconnectivity, we need to start building up this registry and Keystone itself is not exempt from this list, many services rely on this entry-
+
+	# keystone service-create --name=keystone --type=identity --description="Keystone Identity Service"
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |    Keystone Identity Service     |
+	|      id     | d8c464a629604a3daa11ed511c86dd0a |
+	|     name    |             keystone             |
+	|     type    |             identity             |
+	+-------------+----------------------------------+
+
+Note: The above id is unique to the example set-up that I'm creating as per this guide, expect different if you're following it yourself.
+
+What we've just created is a service, that service needs to have an associated endpoint so that other services know how/where to access their API's. The 'id' from the previously returned command is known as the 'service_id' and we use this to link the two elements together. The endpoint entry has a number of URL fields, public, admin and internal. These differ in that the 'adminurl' is an API exposed primarily for administrating Keystone and the 'publicurl' and 'internalurl' are used for authenticating users and by other services to determine endpoints and for policy enforcement. These endpoints are usually the same but can be useful when there are multiple interfaces in use.
+
+The next step creates this endpoint, it assumes that you're using the IP addresses from Labs 1 & 2, ensure you change these to represent the keystone server and ensure that the service_id is taken from the previous service creation step:
+
+	# keystone endpoint-create --service_id d8c464a629604a3daa11ed511c86dd0a \
+		--publicurl 'http://192.168.122.101:5000/v2.0' \
+		--adminurl 'http://192.168.122.101:35357/v2.0' \
+		--internalurl 'http://192.168.122.101:5000/v2.0'
+	+-------------+-----------------------------------+
+	|   Property  |               Value               |
+	+-------------+-----------------------------------+
+	|   adminurl  | http://192.168.122.101:35357/v2.0 |
+	|      id     |  ceb6dfc52ec94e89b790dcc9837c98fb |
+	| internalurl |  http://192.168.122.101:5000/v2.0 |
+	|  publicurl  |  http://192.168.122.101:5000/v2.0 |
+	|    region   |             regionOne             |
+	|  service_id |  d8c464a629604a3daa11ed511c86dd0a |
+	+-------------+-----------------------------------+
+
