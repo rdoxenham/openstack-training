@@ -327,3 +327,145 @@ The next step creates this endpoint, it assumes that you're using the IP address
 	|  service_id |  d8c464a629604a3daa11ed511c86dd0a |
 	+-------------+-----------------------------------+
 
+What you'll notice in the output is that it also assigns the endpoint to a 'region', or a collection of cloud services. As we didn't specify one, it automatically creates the 'regionOne' region and assigns our endpoint here. When we create additional endpoints we can manually specify the region. For this guide, we won't use multiple regions. 
+
+
+From Folsom onwards, all OpenStack services utilise Keystone for authentication. As previously mentioned, Keystone uses tokens that are generated via user authentication, e.g. via a username/password combination. The next few steps create a user account, a 'tenant' (a group of users, or a project) and a 'role' which is used to determine permissions cross the stack. 
+
+	# keystone user-create --name admin --pass <password>
+	+----------+-----------------------------------+
+	| Property |              Value                |
+	+----------+-----------------------------------+
+	| email    |                                   |
+	| enabled  |              True                 |
+	| id       | 679cae35033f4bbc9a18aff0c15b7a99  |
+	| name     |              admin                |
+	| password |               ...                 |
+	| tenantId |                                   |
+	+----------+-----------------------------------+
+
+	# keystone role-create --name admin
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|    id    | 729b4119afaf443eadc8e92f74d43103 |
+	|   name   |              admin               |
+	+----------+----------------------------------+
+
+	# keystone tenant-create --name admin
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |                                  |
+	|   enabled   |               True               |
+	|      id     | 4ab1c31fcd2741afa551b5f76146abf6 |
+	|     name    |              admin               |
+	+-------------+----------------------------------+
+
+Finally we can give the user a role and assign that user to the tenant. Remember that the following command is specific to the id's in *my* environment, you'll need to adjust the id's accordingly based on the results of the previously issued commands:
+
+	# keystone user-role-add --user-id 679cae35033f4bbc9a18aff0c15b7a99 \
+		--role-id 729b4119afaf443eadc8e92f74d43103 \
+		--tenant-id 4ab1c31fcd2741afa551b5f76146abf6
+
+This admin account will be used for Keystone administration, to save time and to not have to worry about specifying usernames/passwords or tokens on the command-line, it's prudent to create an rc file which will load in environment variables; saving a lot of time. This can be copied & pasted, although make sure you change the IP address to match the end-point of your Keystone server and provide the correct password:
+
+	# cat >> ~/keystonerc_admin <<EOF
+	export OS_USERNAME=admin
+	export OS_TENANT_NAME=admin
+	export OS_PASSWORD=<password>
+	export OS_AUTH_URL=http://192.168.122.101:35357/v2.0/
+	export PS1='[\u@\h \W(keystone_admin)]\$ '
+	EOF
+
+Note: We're using the 35357 port above as this is for the administrator API.
+
+The rc can be used by typing:
+
+	# source ~/keystonerc_admin
+
+You can test the file by logging out of your ssh session, logging back in and trying the following-
+
+	# logout
+	# ssh root@node1
+
+	# keystone user-list
+	Expecting authentication method via
+  	either a service token, --os-token or env[OS_SERVICE_TOKEN], 
+  	or credentials, --os-username or env[OS_USERNAME].
+
+	# source ~/keystonerc_admin
+	# keystone user-list
+	+----------------------------------+-------+---------+-------+
+	|                id                |  name | enabled | email |
+	+----------------------------------+-------+---------+-------+
+	| 679cae35033f4bbc9a18aff0c15b7a99 | admin |   True  |       |
+	+----------------------------------+-------+---------+-------+
+
+At this point it would be a good idea to add an additional user account, one that's not an administrator and has limited 'user' rights. This user will be used at a later stage of this guide. Replace <your name> and <password> with your own options, I've used my username 'rdo' for this:
+
+	# keystone user-create --name <your name> --pass <password>
+	+----------+-----------------------------------+
+	| Property |              Value                |
+	+----------+-----------------------------------+
+	| email    |                                   |
+	| enabled  |               True                |
+	| id       | 3b0682e2872849d780ecde00b8d20e4e  |
+	| name     |               rdo                 |
+	| password |               ...                 |
+	| tenantId |                                   |
+	+----------+-----------------------------------+
+
+	# keystone role-create --name user
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|    id    | 9b8ba13292be47b7aae50947b89db5df |
+	|   name   |               user               |
+	+----------+----------------------------------+
+
+I suggest that you create a tenant named 'training' so that we can refer to this tenant throughout the rest of the guide.
+
+	# keystone tenant-create --name training
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |                                  |
+	|   enabled   |               True               |
+	|      id     | 58a576bfd7b34df1afb372c1c905798e |
+	|     name    |             training             |
+	+-------------+----------------------------------+
+
+Remember to tie the user to the role and place that user into the tenant, utilising your own id's that were returned from your own commands:
+
+	# keystone user-role-add --user-id 3b0682e2872849d780ecde00b8d20e4e \
+		--role-id 9b8ba13292be47b7aae50947b89db5df \
+		--tenant-id 58a576bfd7b34df1afb372c1c905798e
+
+In the same way that we created a Keystone rc file for the administrator account, we should create one for this new user.
+
+
+	# cat >> ~/keystonerc_user <<EOF
+        export OS_USERNAME=<your user>
+        export OS_TENANT_NAME=training
+        export OS_PASSWORD=<password>
+        export OS_AUTH_URL=http://192.168.122.101:5000/v2.0/
+        export PS1='[\u@\h \W(keystone_user)]\$ '
+        EOF
+
+Once again noting that we're using port 5000 instead as this is the general purpose API. This can now be tested in the same method as above, a good test is to try and receive a user-list as the non-admin user:
+
+	# source ~/keystonerc_user
+	# keystone user-list
+	Unable to communicate with identity service: {"error": {"message": "You are not authorized to perform the requested action: admin_required", "code": 403, "title": "Not Authorized"}}. (HTTP 403)
+
+	# source ~/keystonerc_admin
+	# keystone user-list
+	+----------------------------------+-------+---------+-------+
+	|                id                |  name | enabled | email |
+	+----------------------------------+-------+---------+-------+
+	| 3b0682e2872849d780ecde00b8d20e4e |  rdo  |   True  |       |
+	| 679cae35033f4bbc9a18aff0c15b7a99 | admin |   True  |       |
+	+----------------------------------+-------+---------+-------+
+
+
