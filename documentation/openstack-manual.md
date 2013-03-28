@@ -218,9 +218,9 @@ For ease of connection to your virtual machine instances, it would be prudent to
 	192.168.122.104 node4
 	EOF
 
-Finally, start your virtual machines:
+Finally, start your first virtual machine that'll be used in the next lab:
 
-	# virsh start node1 && virsh start node2 && virsh start node3 && virsh start node4
+	# virsh start node1
 
 #**Lab 3: Installation and configuration of Keystone (Identity Service)**
 
@@ -231,6 +231,8 @@ Finally, start your virtual machines:
 **Tools used:**
 * SSH
 * subscription-manager
+* yum
+* OpenStack Keystone
 
 ##**Introduction**
 
@@ -294,6 +296,8 @@ At this point, we can start the Keystone service and enable it at boot-time-
 	# service openstack-keystone start
 	# chkconfig openstack-keystone on
 
+##**Creating a Keystone Service**
+
 Recall that Keystone provides the registry of services and their endpoints for interconnectivity, we need to start building up this registry and Keystone itself is not exempt from this list, many services rely on this entry-
 
 	# keystone service-create --name=keystone --type=identity --description="Keystone Identity Service"
@@ -330,7 +334,9 @@ The next step creates this endpoint, it assumes that you're using the IP address
 What you'll notice in the output is that it also assigns the endpoint to a 'region', or a collection of cloud services. As we didn't specify one, it automatically creates the 'regionOne' region and assigns our endpoint here. When we create additional endpoints we can manually specify the region. For this guide, we won't use multiple regions. 
 
 
-From Folsom onwards, all OpenStack services utilise Keystone for authentication. As previously mentioned, Keystone uses tokens that are generated via user authentication, e.g. via a username/password combination. The next few steps create a user account, a 'tenant' (a group of users, or a project) and a 'role' which is used to determine permissions cross the stack. 
+##**Creating Users**
+
+From Folsom onwards, all OpenStack services utilise Keystone for authentication. As previously mentioned, Keystone uses tokens that are generated via user authentication, e.g. via a username/password combination. The next few steps create a user account, a 'tenant' (a group of users, or a project) and a 'role' which is used to determine permissions cross the stack. You can choose your own password here, just remember what it is as we'll use it later:
 
 	# keystone user-create --name admin --pass <password>
 	+----------+-----------------------------------+
@@ -444,14 +450,13 @@ Remember to tie the user to the role and place that user into the tenant, utilis
 
 In the same way that we created a Keystone rc file for the administrator account, we should create one for this new user.
 
-
 	# cat >> ~/keystonerc_user <<EOF
-        export OS_USERNAME=<your user>
-        export OS_TENANT_NAME=training
-        export OS_PASSWORD=<password>
-        export OS_AUTH_URL=http://192.168.122.101:5000/v2.0/
-        export PS1='[\u@\h \W(keystone_user)]\$ '
-        EOF
+	export OS_USERNAME=<your user>
+	export OS_TENANT_NAME=training
+	export OS_PASSWORD=<password>
+	export OS_AUTH_URL=http://192.168.122.101:5000/v2.0/
+	export PS1='[\u@\h \W(keystone_user)]\$ '
+	EOF
 
 Once again noting that we're using port 5000 instead as this is the general purpose API. This can now be tested in the same method as above, a good test is to try and receive a user-list as the non-admin user:
 
@@ -468,4 +473,161 @@ Once again noting that we're using port 5000 instead as this is the general purp
 	| 679cae35033f4bbc9a18aff0c15b7a99 | admin |   True  |       |
 	+----------------------------------+-------+---------+-------+
 
+#**Lab 4: Installation and configuration of Glance (Image Service)**
 
+**Prerequisites:**
+* Keystone installed and configured as per Lab 3
+* A pre-created Linux-based disk image or access to virtual machines created in Lab 2
+
+**Tools used:**
+* OpenStack Keystone
+* OpenStack Glance
+* openstack-db
+* openstack-config
+* ssh
+
+##**Introduction**
+
+Glance is OpenStack's image service, it provides a mechanism for discovering, registering and retrieving virtual machine images. These images are typically standardised and generalised so that they will require post-boot configuration applied. Glance supports a wide variety of disk image formats, including raw, qcow2, vmdk, ami and iso, all of which can be stored in multiple types of back-ends, including OpenStack Swift (OpenStack's Object Storage Service, which we'll cover in a later lab) although by default it will use the local filesystem. 
+
+Glance stores metadata alongside each image which helps identify it and describe the image, it can accomodate for multiple container types, e.g. an image could be completely self contained such as a qcow2 image however an image could also be just a kernel or an initrd file which need to be tied together to successfully boot an instance of that machine. Glance is made up of two components, the glance-registry which is the actual image registry service and glance-api which provides the end-point to the rest of the OpenStack services.
+
+Keystone optionally is used to store the end-point for Glance and provides a mechanism for authentication and policy enforcement, e.g. who owns images and who is allowed to use them. This guide will show you how to integrate Glance with Keystone.
+
+##**Installing Glance**
+
+As we'll be using the same 'cloud conductor' node as before, i.e. the one we deployed Keystone onto, we need to open up a shell to that machine:
+
+	# ssh root@node1
+
+Then install the required components:
+
+	# yum install openstack-glance -y
+
+Glance makes use of MySQL to store the glance-registry data, i.e. all of the image metadata. Therefore we need to create the initial database:
+
+	# openstack-db --init --service glance
+
+##**Integrating Glance with Keystone**
+
+Before we start the Glance service, we need to configure it to speak to Keystone to manage authentication. We make heavy use of the openstack-config tool here for convenience although manually modifying the configuration files is also possible. We provide Glance with the required username and password for authenticating as the 'admin' user; which is required to do background user-token checks.
+
+	# openstack-config --set /etc/glance/glance-api.conf paste_deploy flavor keystone
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_tenant_name admin
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_user admin
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_password <admin password>
+
+	# openstack-config --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_tenant_name admin
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_user admin
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_password <admin password>
+
+Note: One additional configuration option change that would usually need to be made is the 'auth_host' option in both /etc/glance/glance-api.conf and /etc/glance/glance-registry.conf, but as we're using Keystone on the *same* server as Glance we can ignore this option as the default behavior is to look at localhost.
+
+We can now start and enable these services upon boot:
+
+	# service openstack-glance-registry start && chkconfig openstack-glance-registry on
+	# service openstack-glance-api start && chkconfig openstack-glance-api on
+
+To complete the integration, a service an an associated end-point need to be created in Keystone:
+
+	# source ~/keystonerc_admin
+	
+	# keystone service-create --name glance --type image --description "Glance Image Service"
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |       Glance Image Service       |
+	|      id     | 91a5530418ac477e9f7e3d8626e4092c |
+	|     name    |              glance              |
+	|     type    |              image               |
+	+-------------+----------------------------------+
+
+	# keystone endpoint-create --service_id 91a5530418ac477e9f7e3d8626e4092c \
+		--publicurl http://192.168.122.101:9292 \
+		--adminurl http://192.168.122.101:9292 \
+		--internalurl http://192.168.122.101:9292
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	|   adminurl  |   http://192.168.122.101:9292    |
+	|      id     | 714743a317c04252b872c3ba7a7eda58 |
+	| internalurl |   http://192.168.122.101:9292    |
+	|  publicurl  |   http://192.168.122.101:9292    |
+	|    region   |            regionOne             |
+	|  service_id | 91a5530418ac477e9f7e3d8626e4092c |
+	+-------------+----------------------------------+
+
+Note: There's no difference with the port numbers for the Glance service API as there's no specific admin differentiation.
+
+To test the end-point, issue the following:
+
+	# glance index
+
+If you get an empty table it was successful, otherwise we may need to check the service is running and that the entries into keystone were accurate.
+
+##**Adding an image to Glance**
+
+As previously mentioned, images uploaded to Glance should be 're-initialised' or 'syspreped' so that any system-specific configuration is wiped away, this ensures that there are no conflicts between instances that are started. It's common practice to find pre-defined virtual machine images online that contain a base operating system and perhaps a set of packages for a particular purpose. The next few steps will allow you to take such an image and upload it into the Glance registry. 
+
+Firstly, we need to get access to an image, if you're following this guide from Lab 1 you'll realise that we built a number of virtual machines to run our OpenStack virtual machines themselves, their own disk images can be copied for this purpose, and we've already used 'virt-sysprep' to remove any system-specific configuration. Let's take one of those virtual machine images and copy it to our node running Glance. First we have to create a new disk image from our 'node4' machine by converting the old disk image type to a 'qcow2' format. The reason why we convert it is so that we don't copy the full 30GB disk size, we only copy the 'used' data; if it's in the 'raw' format, the filesystem thinks the entire 30GB is to be copied.
+
+	(First, open up a *new* terminal on your physical host machine, Note: NOT nodeX)
+
+	# qemu-img convert -O qcow2 /var/lib/libvirt/images/node4.img /tmp/rhel64.qcow2
+	# scp /tmp/rhel64.qcow2 root@node1:/tmp/rhel64.img
+	# rm /tmp/rhel64.qcow2
+
+Return back to your node1 machine where you have your ssh session running. Let's verify that the disk image was copied across successfully and has the correct properties:
+
+	# yum install qemu-img -y
+
+	# qemu-img info /tmp/rhel64.qcow2
+	image: /tmp/rhel64.qcow2
+	file format: qcow2
+	virtual size: 30G (32212254720 bytes)
+	disk size: 2.6G
+	cluster_size: 65536
+
+Note: If you've opted to use a disk-image you've already created outside of these labs, I strongly advise that you use 'virt-sysprep' to prepare the machine before importing.
+
+Next we can create a new image within Glance and import its contents, it may take a few minutes to copy the data. The 'user' account should be used to upload the image rather than the administrator:
+
+	# source ~/keystonerc_user
+
+	# glance image-create --name "Red Hat Enterprise Linux 6.4" --is-public true \
+		--disk-format qcow2 --container-format bare \
+		--file /tmp/rhel64.qcow2
+	+------------------+--------------------------------------+
+	| Property         | Value                                |
+	+------------------+--------------------------------------+
+	| checksum         | 8935cd7b7e5008edc7806f446828fa8d     |
+	| container_format | bare                                 |
+	| created_at       | 2013-03-28T00:48:15                  |
+	| deleted          | False                                |
+	| deleted_at       | None                                 |
+	| disk_format      | qcow2                                |
+	| id               | af094839-814e-4b76-99c4-9470a8b91903 |
+	| is_public        | True                                 |
+	| min_disk         | 0                                    |
+	| min_ram          | 0                                    |
+	| name             | Red Hat Enterprise Linux 6.4         |
+	| owner            | 58a576bfd7b34df1afb372c1c905798e     |
+	| protected        | False                                |
+	| size             | 2805858304                           |
+	| status           | active                               |
+	| updated_at       | 2013-03-28T00:49:07                  |
+	+------------------+--------------------------------------+
+
+
+The container format is 'bare' because it doesn't require any additional images such as a kernel or initrd, it's completely self-contained. The 'is-public' option allows any user within the tenant (project) to use the image rather than locking it down for the specific user uploading the image.
+
+
+#**Lab 5: Installation and configuration of Cinder (Volume Service)**
+
+**Prerequisites:**
+* Keystone installed and configured as per Lab 3
+
+##**Introduction**
+
+Cinder is OpenStack's volume service
