@@ -270,7 +270,6 @@ Either way, to enable the repository-
 	
 	# reboot
 
-
 ##**Installing Keystone**
 
 Now that the system is set-up for package repositories, has been fully updated and has been rebooted, we can proceed with the installation of OpenStack Keystone. 
@@ -473,6 +472,13 @@ Once again noting that we're using port 5000 instead as this is the general purp
 	| 679cae35033f4bbc9a18aff0c15b7a99 | admin |   True  |       |
 	+----------------------------------+-------+---------+-------+
 
+To accomodate massive scalability, OpenStack was built using AMQP-based messaging for communication. We're going to install qpidd on our 'cloud condutor' node but we'll disable authentication just for convenience. In a production environment authentication would certainly be enabled and configured properly. We need to install this now as later on in the guide we'll rely on this message bus being available.
+
+	# yum install qpid-cpp-server -y
+	# sed -i 's/auth=.*/auth=no/g' /etc/qpidd.conf
+	# service qpidd start && chkconfig qpidd on
+
+
 #**Lab 4: Installation and configuration of Glance (Image Service)**
 
 **Prerequisites:**
@@ -622,6 +628,8 @@ Next we can create a new image within Glance and import its contents, it may tak
 
 The container format is 'bare' because it doesn't require any additional images such as a kernel or initrd, it's completely self-contained. The 'is-public' option allows any user within the tenant (project) to use the image rather than locking it down for the specific user uploading the image.
 
+We'll use this image for deploying instances on OpenStack in the next few labs.
+
 
 #**Lab 5: Installation and configuration of Cinder (Volume Service)**
 
@@ -630,4 +638,176 @@ The container format is 'bare' because it doesn't require any additional images 
 
 ##**Introduction**
 
-Cinder is OpenStack's volume service
+Cinder is OpenStack's volume service, it's responsible for managing persistent block storage, i.e. the creation of a block device, it's lifecycle, connections to instances and it's eventual deletion. Block storage is a requirement in OpenStack for many reasons, firstly persistence but also for performance scenarios, e.g. access to data backed by tiered storage. Cinder supports many different back-ends in which it can connect to and manage storage for OpenStack, including HP's LeftHand, EMC, IBM, Ceph and NetApp, although it does support a basic Linux storage model, based on iSCSI. Cinder was once part of Nova (the OpenStack Compute service, which we'll come onto later on in this guide) and was known as nova-volume; it's since been divorced from Nova in order to allow each distinct component to evolve independently. 
+
+##**Installing Cinder**
+
+For the installation of Cinder, we'll use our second virtual machine that we created, it will provide one of the core services in the OpenStack environment and doesn't provide compute resource to the cluster. As per the previous setup, we need to quickly register this machine with the Red Hat Network and make sure it has access to the required components. Brief instructions are provided below, further details can be found in Lab 3:
+
+	# virsh start node2
+	# ssh root@node2
+
+	(On node2)
+	# subscription-manager register
+	# subscription-manager list --available
+	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+	
+	# yum install yum-utils -y
+	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+	# yum update -y && reboot
+
+Once the machine is fully up to date and has been rebooted, we can begin the installation of Cinder:
+
+	# ssh root@node2
+	# yum install openstack-cinder -y
+
+Cinder uses a MySQL database to hold information about the volumes that it's managing; it's possible to have this data sitting in the same database as the other services we've created, e.g. Keystone and Glance on 'node1' however for simplicity, we'll configure an additional database on 'node2' using openstack-db:
+
+	# yum install openstack-utils -y
+	# openstack-db --init --service cinder --password <password>
+
+As with all other OpenStack services, Cinder uses Keystone for authentication, we'll need to configure this to communicate with Keystone running on node1. We can use the handy 'openstack-config' tool to make these changes for us:
+
+	# openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_tenant_name admin
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_user admin
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_password <Keystone admin password>
+
+Additionally, let's update Cinder so it knows which host our Keystone server runs on, note that if you're not using the IP addresses created in Lab 2, your network configuration may be different to the example below:
+
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_host 192.168.122.101
+
+At the start of this guide we created an AMQP/qpid server for component communication, Cinder is one of those components that makes use of this message queue. We will need to modify our Cinder configuration to point to the server running on node1:
+
+	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_hostname 192.168.122.101
+	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_port 5672
+
+The easiest way to get started with Cinder volumes is to just use it's basic in-built (iSCSI-based) volume service; in production you'd likely connect out to an external SAN however this guide will explain how to configure the basic service. For this you need to create a standard LVM volume group named 'cinder-volumes', which Cinder will carve up into individual logical volumes to present as block devices to the compute instances. The initial virtual machines were created with 30GB storage, so we've got enough to create a local VG.
+
+Warning: The instructions below are not recommended for any form of production environment, they provide a mechanism of creating the required volume group but should not be relied on. An additional disk of partition should be used instead...
+
+	# truncate --size 20G /cinder-volumes
+	# losetup -fv /cinder-volumes
+	Loop device is /dev/loop0
+
+	# vgcreate cinder-volumes /dev/loop0
+	No physical volume label read from /dev/loop0
+ 	Physical volume "/dev/loop0" successfully created
+	Volume group "cinder-volumes" successfully created
+
+	# vgdisplay cinder-volumes
+	--- Volume group ---
+	VG Name               cinder-volumes
+	System ID             
+	Format                lvm2
+	Metadata Areas        1
+	Metadata Sequence No  1
+	VG Access             read/write
+	VG Status             resizable
+	MAX LV                0
+	Cur LV                0
+	Open LV               0
+	Max PV                0
+	Cur PV                1
+	Act PV                1
+	VG Size               20.00 GiB
+	PE Size               4.00 MiB
+	Total PE              5119
+	Alloc PE / Size       0 / 0   
+	Free  PE / Size       5119 / 20.00 GiB
+	VG UUID               JKYl9k-DlQb-HT8l-xyUv-9mKA-Ebhe-82YeUL
+
+All logical volumes created by Cinder will be made available via tgtd, the iSCSI Target Daemon. Each volume has it's own configuration which sits inside of '/etc/cinder/volumes/' and therefore we need to ensure that tgtd is aware of it:
+
+	# echo "include /etc/cinder/volumes/*" >> /etc/tgt/targets.conf
+	# service tgtd start && chkconfig tgtd on
+
+Once this is complete, we can start Cinder:
+
+	# service openstack-cinder-api start
+	# service openstack-cinder-scheduler start
+	# service openstack-cinder-volume start
+
+Don't forget to enable these services on:
+
+	# chkconfig openstack-cinder-api on
+	# chkconfig openstack-cinder-scheduler on
+	# chkconfig openstack-cinder-volume on
+
+Finally, endpoints for the Cinder service need to be added to Keystone. We will need to connect back into our machine hosting Keystone, node1. I'd advise an additional terminal be opened up for this so we can keep our connection open to node2.
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# keystone service-create --name cinder --type volume --description "Cinder Volume Service"
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |      Cinder Volume Service       |
+	|      id     | 94ed0a651b4342e2a2c25c00c2b271d8 |
+	|     name    |              cinder              |
+	|     type    |              volume              |
+	+-------------+----------------------------------+
+
+And then the endpoint, not forgetting to use the id from the previous command, *NOT* the one you see above in this guide. Also note that we're setting the endpoint to be sitting at node2 and not node1, hence the 192.168.122.102 usage:
+
+	# keystone endpoint-create --service_id 94ed0a651b4342e2a2c25c00c2b271d8 \
+		--publicurl "http://192.168.122.102:8776/v1/\$(tenant_id)s" \
+		--adminurl "http://192.168.122.102:8776/v1/\$(tenant_id)s" \
+		--internalurl "http://192.168.122.102:8776/v1/\$(tenant_id)s"
+	+-------------+----------------------------------------------+
+	|   Property  |                    Value                     |
+	+-------------+----------------------------------------------+
+	|   adminurl  | http://192.168.122.102:8776/v1/$(tenant_id)s |
+	|      id     |       002bdb25d74f45fe9a202f0fbbb3c97e       |
+	| internalurl | http://192.168.122.102:8776/v1/$(tenant_id)s |
+	|  publicurl  | http://192.168.122.102:8776/v1/$(tenant_id)s |
+	|    region   |                  regionOne                   |
+	|  service_id |       94ed0a651b4342e2a2c25c00c2b271d8       |
+	+-------------+----------------------------------------------+
+
+Note: We were required to enter 'tenant_id' in the URL string as this gets automatically substituted by the client that's interacting with the API, that way we're only able to see/configure the volumes within that users tenant/project.
+
+Finally, return back to your session on node2 (where Cinder is running) and ensure that you can create a volume. Note that you'll require authentication with Keystone, so the easiest thing to do is copy the 'user' rc file from your node1 machine:
+
+	node2 # scp root@node1:/root/keystonerc_user ~/
+	
+	# source keystonerc_user
+	# keystone token-get
+	+-----------+----------------------------------+
+	|  Property |              Value               |
+	+-----------+----------------------------------+
+	|  expires  |       2013-03-31T18:33:16Z       |
+	|     id    | d1a21139f5ce45d394ceaa8a1dde59f1 |
+	| tenant_id | 58a576bfd7b34df1afb372c1c905798e |
+	|  user_id  | 3b0682e2872849d780ecde00b8d20e4e |
+	+-----------+----------------------------------+
+
+	# cinder create --display-name Test 1
+	+---------------------+--------------------------------------+
+	|       Property      |                Value                 |
+	+---------------------+--------------------------------------+
+	|     attachments     |                  []                  |
+	|  availability_zone  |                 nova                 |
+	|      created_at     |      2013-03-30T18:34:15.049367      |
+	| display_description |                 None                 |
+	|     display_name    |                 Test                 |
+	|          id         | d1907853-68e5-45e7-aa86-23b52a833258 |
+	|       metadata      |                  {}                  |
+	|         size        |                  1                   |
+	|     snapshot_id     |                 None                 |
+	|        status       |               creating               |
+	|     volume_type     |                 None                 |
+	+---------------------+--------------------------------------+
+
+	# lvs | grep cinder-volumes
+	volume-d1907853-68e5-45e7-aa86-23b52a833258 cinder-volumes -wi-ao---  1.00g
+
+	# cinder delete d1907853-68e5-45e7-aa86-23b52a833258
+
+Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying to create or delete any volumes it might be worth watching these logfiles-
+
+	# tail -f /var/log/cinder/*.log
+	(Ctrl-C to quit)
+
+
