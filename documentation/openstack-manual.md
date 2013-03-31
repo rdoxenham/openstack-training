@@ -124,7 +124,7 @@ Finally, ensure that the bridge is setup correctly on the host:
 
 ##**Introduction**
 
-OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing all of the functions, or a complete OpenStack cloud contained within itself. This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are two main 'roles' for a machine within the cluster, a 'cloud conductor' and a 'compute node'. A 'cloud conductor' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. Whilst a 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start instances.
+OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing all of the functions, or a complete OpenStack cloud contained within itself. This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are two main 'roles' for a machine within the cluster, a 'cloud controller' and a 'compute node'. A 'cloud controller' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. Whilst a 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start instances.
 
 This guide establishes four distinct virtual machines which will make up the core components, their individual purposes will not be explained in this section, the purpose of this lab is to quickly provision these machines as the infrastructure that our OpenStack cluster will be based upon.
 
@@ -238,7 +238,7 @@ Finally, start your first virtual machine that'll be used in the next lab:
 
 Keystone is the identity management component of OpenStack; it supports token-based, username/password and AWS-style logins and is responsible for providing a centralised directory of users mapped to the services they are granted to use. It acts as the common authentication system across the whole of the OpenStack environment and integrates well with existing backend directory services such as LDAP. In addition to providing a centralised repository of users, Keystone provides a catalogue of services deployed in the environment, allowing service discovery with their endpoints (or API entry-points) for access. Keystone is responsible for governance in an OpenStack cloud, it provides a policy framework for allowing fine grained access control over various components and responsibilities in the cloud environment.
 
-As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (node1) and turn this into a 'cloud conductor' in which, Keystone will be a crucial part of that infrastructure.
+As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (node1) and turn this into a 'cloud controller' in which, Keystone will be a crucial part of that infrastructure.
 
 ##**Preparing the machine**
 
@@ -502,7 +502,7 @@ Keystone optionally is used to store the end-point for Glance and provides a mec
 
 ##**Installing Glance**
 
-As we'll be using the same 'cloud conductor' node as before, i.e. the one we deployed Keystone onto, we need to open up a shell to that machine:
+As we'll be using the same 'cloud controller' node as before, i.e. the one we deployed Keystone onto, we need to open up a shell to that machine:
 
 	# ssh root@node1
 
@@ -661,6 +661,8 @@ Once the machine is fully up to date and has been rebooted, we can begin the ins
 	# ssh root@node2
 	# yum install openstack-cinder -y
 
+##**Configuring Cinder**
+
 Cinder uses a MySQL database to hold information about the volumes that it's managing; it's possible to have this data sitting in the same database as the other services we've created, e.g. Keystone and Glance on 'node1' however for simplicity, we'll configure an additional database on 'node2' using openstack-db:
 
 	# yum install openstack-utils -y
@@ -681,6 +683,8 @@ At the start of this guide we created an AMQP/qpid server for component communic
 
 	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_hostname 192.168.122.101
 	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_port 5672
+
+##**Preparing storage for Cinder**
 
 The easiest way to get started with Cinder volumes is to just use it's basic in-built (iSCSI-based) volume service; in production you'd likely connect out to an external SAN however this guide will explain how to configure the basic service. For this you need to create a standard LVM volume group named 'cinder-volumes', which Cinder will carve up into individual logical volumes to present as block devices to the compute instances. The initial virtual machines were created with 30GB storage, so we've got enough to create a local VG.
 
@@ -734,6 +738,8 @@ Don't forget to enable these services on:
 	# chkconfig openstack-cinder-scheduler on
 	# chkconfig openstack-cinder-volume on
 
+##**Integrating Cinder with Keystone**
+
 Finally, endpoints for the Cinder service need to be added to Keystone. We will need to connect back into our machine hosting Keystone, node1. I'd advise an additional terminal be opened up for this so we can keep our connection open to node2.
 
 	# ssh root@node1
@@ -767,6 +773,8 @@ And then the endpoint, not forgetting to use the id from the previous command, *
 	+-------------+----------------------------------------------+
 
 Note: We were required to enter 'tenant_id' in the URL string as this gets automatically substituted by the client that's interacting with the API, that way we're only able to see/configure the volumes within that users tenant/project.
+
+##**Testing Cinder**
 
 Finally, return back to your session on node2 (where Cinder is running) and ensure that you can create a volume. Note that you'll require authentication with Keystone, so the easiest thing to do is copy the 'user' rc file from your node1 machine:
 
@@ -805,9 +813,60 @@ Finally, return back to your session on node2 (where Cinder is running) and ensu
 
 	# cinder delete d1907853-68e5-45e7-aa86-23b52a833258
 
-Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying to create or delete any volumes it might be worth watching these logfiles-
+Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying to create or delete any volumes it might be worth watching these logfiles. We'll be using Cinder in later labs to attach volumes to instances-
 
 	# tail -f /var/log/cinder/*.log
 	(Ctrl-C to quit)
 
+
+#**Lab 6: Installation and configuration of Nova (Compute Service)**
+
+**Prerequisites:**
+* Keystone installed and configured as per Lab 3
+
+##**Introduction**
+
+Nova is OpenStack's compute service, it's responsible for providing and scheduling compute resource for OpenStack instances. It's undoubtably the most important part of the OpenStack project. It was designed to massively scale horizontally to cater for the largest clouds. Nova supports a wide variety of hardware and software platforms, including the most popular hypervisors such as KVM, Xen, Hyper-V and VMware ESX, turning traditional virtualisation environments into cloud resource pools. Nova has many different individual components, each of which are responsible for a specific task, examples include a compute driver which is responsible for providing resource to the cloud, a scheduler to respond to and allocate requests from cloud consumers and a network layer which provides inward and outward network traffic to compute instances.
+
+Nova is quite fragmented in its architecture, the scheduler as an example typically sits on a separate machine to the compute nodes, where only the compute and network components exist. As with other components, a message bus exists between all the components allowing the distribution to be completely open and as a result can drastically scale. 
+
+The lab will walk you through deploying Nova across the cluster, utilising our 'cloud condutor' (node1) to provide the API and scheduler services and the remaining two virtual machines to provide compute resource. It will also show you how to manage the individual Nova services and integrate with the rest of the stack.
+
+Estimated completion time: 1 hour
+
+##**Preparing the Cloud Condutor**
+
+We need to deploy the Nova components on our first node that will provide the API and the scheduler services and will be the endpoint for Nova in our environment. It's important to note that typically the Nova configuration between cloud controller nodes and compute nodes is actually almost identical, it's the Nova services that are started on a particular node that define its responsibilities. Therefore it may seem strange why we're configuring Nova 
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# openstack-db --init --service nova --password <password>
+
+It's important to make a few necessary changes to the Nova configuration file in order to establish integration with other components that we've already setup. There are over 570 configuration options within Nova at the time of writing this so it gets extremely difficult to troubleshoot using the configuration file. Many of the options are commented out but it does provide you with every option possible.
+
+
+
+##**Preparing the Compute Nodes**
+
+So far we've used two of our four virtual instances, the remaining two will be used as compute nodes which we'll install and configure Nova on. This lab repeats the previous steps of registering and subscribing systems to receive OpenStack channel content:
+
+	# virsh start node3 && virsh start node4
+	# ssh root@node3
+	
+	# subscription-manager register
+        # subscription-manager list --available
+        # subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+
+        # yum install yum-utils -y
+        # yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+        # yum update -y && reboot
+
+Note: I would recommend that you configure one node at a time, so start with node3 and once we have this within the OpenStack environment we can simply copy configuration files over and start the required services.
+
+After the machine has rebooted, connect back in and install the required components:
+
+	# ssh root@node3
+	# yum install openstack-nova -y
+	# yum install python-cinderclient -y
 
