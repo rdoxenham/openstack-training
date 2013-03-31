@@ -830,11 +830,11 @@ Nova is OpenStack's compute service, it's responsible for providing and scheduli
 
 Nova is quite fragmented in its architecture, the scheduler as an example typically sits on a separate machine to the compute nodes, where only the compute and network components exist. As with other components, a message bus exists between all the components allowing the distribution to be completely open and as a result can drastically scale. 
 
-The lab will walk you through deploying Nova across the cluster, utilising our 'cloud condutor' (node1) to provide the API and scheduler services and the remaining two virtual machines to provide compute resource. It will also show you how to manage the individual Nova services and integrate with the rest of the stack.
+The lab will walk you through deploying Nova across the cluster, utilising our 'cloud controller' (node1) to provide the API and scheduler services and the remaining two virtual machines to provide compute resource (with associated network component). It will also show you how to manage the individual Nova services and integrate with the rest of the stack.
 
 Estimated completion time: 1 hour
 
-##**Preparing the Cloud Condutor**
+##**Preparing the Cloud Controller**
 
 We need to deploy the Nova components on our first node that will provide the API and the scheduler services and will be the endpoint for Nova in our environment. It's important to note that typically the Nova configuration between cloud controller nodes and compute nodes is actually almost identical, it's the Nova services that are started on a particular node that define its responsibilities. Therefore it may seem strange why we're configuring Nova 
 
@@ -843,24 +843,98 @@ We need to deploy the Nova components on our first node that will provide the AP
 
 	# openstack-db --init --service nova --password <password>
 
-It's important to make a few necessary changes to the Nova configuration file in order to establish integration with other components that we've already setup. There are over 570 configuration options within Nova at the time of writing this so it gets extremely difficult to troubleshoot using the configuration file. Many of the options are commented out but it does provide you with every option possible.
+A few necessary changes to the Nova configuration file are required in order to establish integration with other components that we've already setup. There are over 570 configuration options within Nova at the time of writing this so it gets extremely difficult to troubleshoot using the configuration file. Many of the options are commented out but it does provide you with every option possible. For ease of deployment, below is a basic Nova configuration file which is tailored to the environment that we've been creating.
 
+Firstly, move the original nova.conf file to somewhere safe so we've always got a backup:
 
+	# mv /etc/nova/nova.conf ~/nova.conf.original
+
+Then copy the following code into /etc/nova/nova.conf:
+
+	[DEFAULT]
+	logdir = /var/log/nova
+	state_path = /var/lib/nova
+	lock_path = /var/lib/nova/tmp
+	volumes_dir = /etc/nova/volumes
+	dhcpbridge = /usr/bin/nova-dhcpbridge
+	dhcpbridge_flagfile = /etc/nova/nova.conf
+	force_dhcp_release = True
+	injected_network_template = /usr/share/nova/interfaces.template
+	libvirt_nonblocking = True
+	libvirt_inject_partition = -1
+	iscsi_helper = tgtadm
+	sql_connection = mysql://nova:<password>@192.168.122.101/nova
+	compute_driver = libvirt.LibvirtDriver
+	libvirt_type=qemu
+	firewall_driver = nova.virt.libvirt.firewall.IptablesFirewallDriver
+	rpc_backend = nova.openstack.common.rpc.impl_qpid
+	rootwrap_config = /etc/nova/rootwrap.conf
+	auth_strategy = keystone
+	
+	volume_api_class = nova.volume.cinder.API
+	enabled_apis = ec2,osapi_compute,metadata
+	my_ip=192.168.122.101
+	qpid_hostname=192.168.122.101
+	qpid_port=5672
+
+	glance_host 192.168.122.101
+	
+	network_manager=nova.network.manager.FlatDHCPManager
+	public_interface=br100
+	flat_network_bridge=br100
+	flat_interface=eth0
+	
+	[keystone_authtoken]
+	admin_tenant_name = admin
+	admin_user = admin
+	admin_password = <password>
+	auth_host = 192.168.122.101
+	auth_port = 35357
+	auth_protocol = http
+	signing_dirname = /tmp/keystone-signing-nova
+
+What this configuration is describing is as follows-
+
+* The MySQL database (which holds the instance data) is located on node1
+* We want to use Libvirt for the Compute, but qemu based emulation
+* We are using iptables to provide the firewall (and routing for networking)
+* We are using qpid as the backend messaging broker (and it sits on node1)
+* Cinder is the volume manager for providing persistent storage
+* Glance is providing the networking and sits on node1
+* The machine's IP address is 192.168.122.101 (node1)
+* We're using Nova's FlatDHCPManager network config (more to come later)
+* And we're using Keystone for authentication.
+
+Note: Remember to change the keystone admin_password entry and the MySQL password to reflect your configuration.	
+
+Just to make sure the file has been created properly:
+
+	# chown root:nova /etc/nova/nova.conf
+	# restorecon /etc/nova/nova.conf
+	# chmod 640 /etc/nova/nova.conf
+
+That configuration should be enough for the cloud controller machine, we can then start the necessary services on this machine:
+
+	# service openstack-nova-api start
+	# service openstack-nova-scheduler start
+
+	# chkconfig openstack-nova-api on
+	# chkconfig openstack-nova-scheduler on
 
 ##**Preparing the Compute Nodes**
 
 So far we've used two of our four virtual instances, the remaining two will be used as compute nodes which we'll install and configure Nova on. This lab repeats the previous steps of registering and subscribing systems to receive OpenStack channel content:
 
-	# virsh start node3 && virsh start node4
+	# virsh start node3
 	# ssh root@node3
 	
 	# subscription-manager register
-        # subscription-manager list --available
-        # subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+	# subscription-manager list --available
+	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
 
-        # yum install yum-utils -y
-        # yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
-        # yum update -y && reboot
+	# yum install yum-utils -y
+	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+	# yum update -y && reboot
 
 Note: I would recommend that you configure one node at a time, so start with node3 and once we have this within the OpenStack environment we can simply copy configuration files over and start the required services.
 
@@ -869,4 +943,194 @@ After the machine has rebooted, connect back in and install the required compone
 	# ssh root@node3
 	# yum install openstack-nova -y
 	# yum install python-cinderclient -y
+
+Also, as this machine will provide resource, we need to ensure that libvirt is installed-
+
+	# yum install libvirt -y
+	# chkconfig libvirtd on && service libvirtd start
+
+	# scp root@node1:/etc/nova/nova.conf /etc/nova/nova.conf
+	# chown root:nova /etc/nova/nova.conf
+	# restorecon /etc/nova/nova.conf
+	# chmod 640 /etc/nova/nova.conf
+
+Remember that the nova.conf that was on node1 was slightly configured specifically for node1, we should make a few changes so that it fits with node3's configuration:
+
+	# sed -i 's/my_ip=.*/my_ip=192.168.122.103/g' /etc/nova/nova.conf
+
+Note: If your compute node is not at '192.168.122.103, make the required change in the above sed command, or just manually edit the /etc/nova/nova.conf file.
+
+We can now start the required services on this node, that'll be compute and network:
+
+	# service openstack-nova-compute start
+	# service openstack-nova-network start
+
+	# chkconfig openstack-nova-compute on
+	# chkconfig openstack-nova-network on
+
+We're now finished with node3 for now, we need to return to our cloud controller (node1) and setup the keystone service and endpoints:
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# keystone service-create --name nova --type compute --description "Nova Compute Service"
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |       Nova Compute Service       |
+	|      id     | 59fdd4afc25d4e62aa7494ffcf05a78f |
+	|     name    |               nova               |
+	|     type    |             compute              |
+	+-------------+----------------------------------+
+
+	# keystone endpoint-create --service_id 59fdd4afc25d4e62aa7494ffcf05a78f \
+		--publicurl "http://192.168.122.101:8774/v1.1/\$(tenant_id)s" \
+		--adminurl "http://192.168.122.101:8774/v1.1/\$(tenant_id)s" \
+		--internalurl "http://192.168.122.101:8774/v1.1/\$(tenant_id)s"
+	+-------------+------------------------------------------------+
+	|   Property  |                     Value                      |
+	+-------------+------------------------------------------------+
+	|   adminurl  | http://192.168.122.101:8774/v1.1/$(tenant_id)s |
+	|      id     |        44d3e0c6bec74ff39bea02b929aec3af        |
+	| internalurl | http://192.168.122.101:8774/v1.1/$(tenant_id)s |
+	|  publicurl  | http://192.168.122.101:8774/v1.1/$(tenant_id)s |
+	|    region   |                   regionOne                    |
+	|  service_id |        59fdd4afc25d4e62aa7494ffcf05a78f        |
+	+-------------+------------------------------------------------+
+
+Next, let's make sure that our integration into other components is working correctly. We can use 'nova-manage' to provide us with statistics and monitoring for Nova:
+
+	# nove-manage service list
+	Binary           Host         Zone      Status     State   Updated_At
+	nova-scheduler   node1        nova      enabled    :-)     2013-03-31 10:47:20
+	nova-network     node3        nova      enabled    :-)     2013-03-31 10:47:20
+	nova-compute     node3        nova      enabled    :-)     2013-03-31 10:47:21
+
+We can see that nova-scheduler is running on node1 (where nova-api also runs) and nova-network and nova-compute are running on node3. This is all shared via AMQP/qpid. To test integration with Glance, for example:
+
+	# nova image-list
+	+--------------------------------------+------------------------------+--------+--------+
+	| ID                                   | Name                         | Status | Server |
+	+--------------------------------------+------------------------------+--------+--------+
+	| af094839-814e-4b76-99c4-9470a8b91903 | Red Hat Enterprise Linux 6.4 | ACTIVE |        |
+	+--------------------------------------+------------------------------+--------+--------+
+
+We could of course, test Cinder integration but there's currently no volumes specified. If you're really wanting to test this, follow these instructions, note that you can carry out OpenStack tasks from any node that you have the rc file from:
+
+	# source keystonerc_user
+	# cinder create --display-name Test 2
+	+---------------------+--------------------------------------+
+	|       Property      |                Value                 |
+	+---------------------+--------------------------------------+
+	|     attachments     |                  []                  |
+	|  availability_zone  |                 nova                 |
+	|      created_at     |      2013-03-31T11:03:13.092670      |
+	| display_description |                 None                 |
+	|     display_name    |                 Test                 |
+	|          id         | eeb4d74e-5794-426c-b71d-24f1f17eaba5 |
+	|       metadata      |                  {}                  |
+	|         size        |                  2                   |
+	|     snapshot_id     |                 None                 |
+	|        status       |               creating               |
+	|     volume_type     |                 None                 |
+	+---------------------+--------------------------------------+
+
+	# nova volume-list
+	+--------------------------------------+-----------+--------------+------+-------------+-------------+
+	| ID                                   | Status    | Display Name | Size | Volume Type | Attached to |
+	+--------------------------------------+-----------+--------------+------+-------------+-------------+
+	| eeb4d74e-5794-426c-b71d-24f1f17eaba5 | available | Test         | 2    | None        |             |
+	+--------------------------------------+-----------+--------------+------+-------------+-------------+
+
+	# nova volume-delete eeb4d74e-5794-426c-b71d-24f1f17eaba5
+
+Warning: If you've rebooted your Cinder node, it's likely that the above will fail. The mechanism we used for creating the volume-group is a temporary workaround. Please re-visit the lab to re-setup the volume group and restart the cinder services and re-attempt the above.
+
+Let's next ensure that the fourth node can join the compute cluster. Repeat the steps undertaken for node3 on node4, when you've copied the Nova configuration file over, make sure you set the IP address accordingly:
+
+	# sed -i 's/my_ip=.*/my_ip=192.168.122.104/g' /etc/nova/nova.conf
+
+You can now start the services on node4:
+
+	# service openstack-nova-compute start
+	# service openstack-nova-api start
+
+	# chkconfig openstack-nova-compute on
+	# chkconfig openstack-nova-api on
+
+Let's make sure that they've joined the cluster successfully, note you may have to wait 30 seconds for them to appear:
+
+	# nova-manage service list
+	Binary           Host    Zone      Status     State   Updated_At
+	nova-scheduler   node1   nova      enabled    :-)     2013-03-31 11:26:05
+	nova-network     node3   nova      enabled    :-)     2013-03-31 11:26:06
+	nova-compute     node3   nova      enabled    :-)     2013-03-31 11:26:06
+	nova-compute     node4   nova      enabled    :-)     2013-03-31 11:25:58
+	nova-network     node4   nova      enabled    :-)     2013-03-31 11:26:02
+
+Note: One of the most common problems with services being visible but not in a 'happy' state is time inconsistencies. If you're experiencing issues please confirm the date/time first!
+
+If you watch the nova logs on one of the compute nodes, you'll see the nodes checking in and updating their available resource for the scheduler...
+
+	# tail -n5 /var/log/nova/compute.log 
+	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free ram (MB): 460
+	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free disk (GB): 27
+	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free VCPUS: 1
+	2013-03-31 13:06:10 1836 INFO nova.compute.resource_tracker [-] Compute_service record updated for node4 
+	2013-03-31 13:06:10 1836 INFO nova.compute.manager [-] Updating host status
+
+Finally, we need to create a logical network for our instances. This is a private network that is used for internal communication between instances and their underlying services. Connecting to instances will not be possible from outside of this network at this time, but this is an essential step. The networking provided by iptables will ensure that network traffic connecting in via this private network gets automatically routed to the correct nodes.
+
+	# nova-manage network create private 10.0.0.0/24 1 256 --bridge=br100
+
+
+#**Lab 7: Installation and configuration of Horizon (Frontend)**
+
+**Prerequisites:**
+* All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
+
+##**Introduction**
+
+Horizon is OpenStack's official implementation of a dashboard, a web-based front-end for the OpenStack services such as Nova, Cinder, Keystone etc. It provides an extensible framework for implementing features for new technologies as they emerge, e.g. billing and metering. The dashboard offers two main views, one for the administrators and a more limited 'self-service' style portal on offer to the end-users. The dashboard can be customised or "branded" so that logos for varios distributions or service-providers can be inserted. Of course, Horizon directly interfaces with the API's that OpenStack opens up and therefore OpenStack can fully function *without* Horizon but it's a nice addition to have.
+
+This lab will install Horizon on-top of your existing infrastructure and we'll use it to deploy our first instances in the next lab.
+
+Estimated completion time: 20 minutes.
+
+##**Installing Horizon**
+
+As with all OpenStack components, their location within the cloud is largely irrelevant. However, for convenience we'll install Horizon on our cloud controller node. Note that Horizon is known as 'openstack-dashboard':
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# yum install openstack-dashboard -y
+
+By default, SELinux will be enabled, we need to make sure that httpd can connect out to Keystone:
+
+	# setsebool -P httpd_can_network_connect on
+
+In addition, usually Horizon (and Swift, which will be covered later) use a role called "Member", we should create this before we continue:
+
+	# keystone role-create --name Member
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|    id    | dc414ecbff6e49e79003146a83f092c5 |
+	|   name   |              Member              |
+	+----------+----------------------------------+
+
+We can then start the service (the dashboard exists as a configuration plugin to Apache):
+
+	# service httpd start
+	# chkconfig httpd on
+
+You can then navigate to http://192.168.122.101/dashboard - you can use your user account to login as well as the admin one to see the differences.
+
+Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, although in future production deployments it would be prudent to use SSL for communications and configure the systems accordingly. 
+
+#**Lab 8: Deployment of first test instances**
+
+**Prerequisites:**
+* All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
 
