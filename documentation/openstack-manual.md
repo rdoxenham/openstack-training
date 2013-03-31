@@ -1134,6 +1134,8 @@ Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, alth
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
 
+##**Background Information**
+
 We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) quantum, what we've configured so far is nova-network as it's easy to configure. 
 
 The Nova configuration file specifies multiple interfaces, a "public_interface" and a "flat_interface", the public one is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. The flat interface is one in which that is considered private, i.e. has no public connectivity and is primarily used for virtual machine interconnects and private networking. OpenStack relies on a private network for bridging public traffic and routing, therefore it's essential that we configure the private network.
@@ -1148,4 +1150,140 @@ We've already created this network in the previous lab and therefore there's not
 	# source keystonerc_admin
 
 	# nova-manage network list
-	...
+	id IPv4           IPv6     start address  DNS1         	DNS2      VlanID    project   uuid           
+	1  10.0.0.0/24    None     10.0.0.2       8.8.4.4      	None      None      None      325550e3-711b-4e41-b43c-1750b4cf85c5
+
+Every instance that starts will automatically get a private IP address within that network, 10.0.0.0/24, and is assigned via DHCP by dnsmasq running on each of our configured compute-nodes. There are other options for nova-network, FlatDHCPManager and FlatManager, the only difference between the two is that FlatManager relies on external DHCP and DNS to be relayed onto the instances, but both rely on the network bridge created by nova-network. There's one additional network-type, VlanManager, which solves a few problems that FlatManager/FlatDHCPManager have; e.g. tenant isolation, with these networks, all virtual machines sit within the same network range, VlanManager extends this further by providing a separate VLAN-tagged network for each tenant/project.
+
+The second element to be aware of is images; Glance provides the repository of disk images, when the Nova scheduler instructs a compute-node to start an instance it retrieves the required disk image and stores it locally on the hypervisor, it then uses this image as a backing store for any number of instances' disk images; i.e. for each instance started, a delta/qcow2 is instantiated which only tracks the differences, the underlying disk image is untouched.
+
+Finally, instances come in all different shapes and sizes, known as flavors in OpenStack. This mimics what many public cloud providers offer. Out of the box, OpenStack ships with five different offerings, each with varying numbers of virtual CPUs, memory, disk space etc. When starting an instance, this is one of the choices that will be offered to you
+
+##**Starting instances via the console**
+
+Let's launch our first instance in OpenStack using the command line. Firstly we need to find out a few things, the flavor size and the image we want to start, plus we have to give it a name:
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# nova flavor-list
+	+----+-----------+-----------+------+-----------+------+-------+-------------+-----------+-------------+
+	| ID | Name      | Memory_MB | Disk | Ephemeral | Swap | VCPUs | RXTX_Factor | Is_Public | extra_specs |
+	+----+-----------+-----------+------+-----------+------+-------+-------------+-----------+-------------+
+	| 1  | m1.tiny   | 512       | 0    | 0         |      | 1     | 1.0         | True      | {}          |
+	| 2  | m1.small  | 2048      | 20   | 0         |      | 1     | 1.0         | True      | {}          |
+	| 3  | m1.medium | 4096      | 40   | 0         |      | 2     | 1.0         | True      | {}          |
+	| 4  | m1.large  | 8192      | 80   | 0         |      | 4     | 1.0         | True      | {}          |
+	| 5  | m1.xlarge | 16384     | 160  | 0         |      | 8     | 1.0         | True      | {}          |
+	+----+-----------+-----------+------+-----------+------+-------+-------------+-----------+-------------+
+
+	# nova image-list
+	+--------------------------------------+------------------------------+--------+--------+
+	| ID                                   | Name                         | Status | Server |
+	+--------------------------------------+------------------------------+--------+--------+
+	| af094839-814e-4b76-99c4-9470a8b91903 | Red Hat Enterprise Linux 6.4 | ACTIVE |        |
+	+--------------------------------------+------------------------------+--------+--------+
+
+	# nova boot --flavor 1 --image af094839-814e-4b76-99c4-9470a8b91903 RHEL-Test
+	+-------------------------------------+--------------------------------------+
+	| Property                            | Value                                |
+	+-------------------------------------+--------------------------------------+
+	| OS-DCF:diskConfig                   | MANUAL                               |
+	| OS-EXT-SRV-ATTR:host                | None                                 |
+	| OS-EXT-SRV-ATTR:hypervisor_hostname | None                                 |
+	| OS-EXT-SRV-ATTR:instance_name       | instance-0000000f                    |
+	| OS-EXT-STS:power_state              | 0                                    |
+	| OS-EXT-STS:task_state               | scheduling                           |
+	| OS-EXT-STS:vm_state                 | building                             |
+	| accessIPv4                          |                                      |
+	| accessIPv6                          |                                      |
+	| adminPass                           | YbPu2VVe2DQa                         |
+	| config_drive                        |                                      |
+	| created                             | 2013-03-31T19:23:08Z                 |
+	| flavor                              | m1.tiny                              |
+	| hostId                              |                                      |
+	| id                                  | 052413c7-7a9f-48d6-afac-7b13bc64c017 |
+	| image                               | Red Hat Enterprise Linux 6.4         |
+	| key_name                            | None                                 |
+	| metadata                            | {}                                   |
+	| name                                | RHEL-Test                            |
+	| progress                            | 0                                    |
+	| security_groups                     | [{u'name': u'default'}]              |
+	| status                              | BUILD                                |
+	| tenant_id                           | 4ab1c31fcd2741afa551b5f76146abf6     |
+	| updated                             | 2013-03-31T19:23:08Z                 |
+	| user_id                             | 679cae35033f4bbc9a18aff0c15b7a99     |
+	+-------------------------------------+--------------------------------------+
+
+	# nova list
+	+--------------------------------------+-----------+--------+------------------+
+	| ID                                   | Name      | Status | Networks         |
+	+--------------------------------------+-----------+--------+------------------+
+	| 052413c7-7a9f-48d6-afac-7b13bc64c017 | RHEL-Test | ACTIVE | private=10.0.0.2 |
+	+--------------------------------------+-----------+--------+------------------+
+
+As you can see, our machine has been given a network address of 10.0.0.2 and has been started. Finally, lets remove this instance and repeat the process via the dashboard:
+
+	# nova delete 052413c7-7a9f-48d6-afac-7b13bc64c017
+
+##**Starting instances via the Dashboard**
+
+1. Login to the dashboard (with your user account, not admin) at http://192.168.122.101/dashboard
+2. Select 'Instances' on the left-hand side
+3. Select 'Launch Instance' in the top-right
+4. Choose 'Red Hat Enterprise Linux 6.4' from the Image drop-down box
+5. Give the instance a name
+6. Ensure that 'm1.tiny' is selected in the Flavour drop-down box
+7. Select 'Launch' in the bottom right-hand corner of the pop-up window
+
+You'll notice that the instance will begin building and will provide you with an updated overview of the instance. Once it's started, lets remove it before continuing on with the lab:
+
+1. For the instance in question, in the final column 'Actions' click the drop-down arrow
+2. Select 'Terminate Instance'
+3. Confirm termination
+
+##**Viewing Console Output**
+
+Via the OpenStack Dashboard (Horizon) as well as via the command-line tools we can access both the console log and the VNC console, we need to configure VNC first though. OpenStack provides a component called novncproxy, this proxies connections from clients to the compute nodes running the instances themselves. Whilst it can be installed anywhere, we should install this on our cloud controller node:
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# yum install openstack-nova-novncproxy -y
+
+Then, set the configuration for novncproxy up:
+
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
+
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		novncproxy_port 6080
+
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
+	
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		vnc_enabled true
+	
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		vncserver_listen 127.0.0.1
+	
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		vncserver_proxyclient_address 127.0.0.1
+
+Remember to make the same changes on the compute nodes, or alternatively copy the configuration file from node1 and change the 'my_ip' line in each of the nodes to reflect the system in question.
+
+On both the cloud controller we need to start and enable two services for VNC to work properly, the first is the novncproxy service itself and the second is the consoleauth service which is responsible for token-based authentication:
+
+	# service openstack-nova-novncproxy start
+	# service openstack-nova-consoleauth start
+
+	# chkconfig openstack-nova-novncproxy on
+	# chkconfig openstack-nova-consoleauth on
+
+Finally, restart the compute services on the two compute-nodes:
+
+	# ssh root@node3 service openstack-nova-compute restart
+	# ssh root@node4 service openstack-nova-compute restart
+
+##**Connecting into running instances**
