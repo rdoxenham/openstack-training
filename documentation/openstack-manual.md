@@ -880,7 +880,7 @@ Then copy the following code into /etc/nova/nova.conf:
 	glance_host 192.168.122.101
 	
 	network_manager=nova.network.manager.FlatDHCPManager
-	public_interface=br100
+	public_interface=eth0
 	flat_network_bridge=br100
 	flat_interface=eth0
 	
@@ -1134,3 +1134,18 @@ Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, alth
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
 
+We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) quantum, what we've configured so far is nova-network as it's easy to configure. 
+
+The Nova configuration file specifies multiple interfaces, a "public_interface" and a "flat_interface", the public one is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. The flat interface is one in which that is considered private, i.e. has no public connectivity and is primarily used for virtual machine interconnects and private networking. OpenStack relies on a private network for bridging public traffic and routing, therefore it's essential that we configure the private network.
+
+In our test-bed environment, each VM has just a single network interface, therefore both the public and flat networks are provided by the same interface. In addition to these two parameters, we need a bridge interface which links the VM network to the flat interface, in this case we've called it br100 ("flat_network_bridge"). 
+
+A diagram explaining the above can be found [here](http://docs.openstack.org/trunk/openstack-compute/admin/content/figures/7/figures/flatdchp-net.jpg)
+
+We've already created this network in the previous lab and therefore there's nothing more that we need to do. To confirm it's running:
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+	# nova-manage network list
+	...
