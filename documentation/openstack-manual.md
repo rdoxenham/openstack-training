@@ -1370,6 +1370,8 @@ As a recap, iptables on the compute nodes provides NAT based networking to the i
 
 The "public_interface" allows additional IP addresses to be dynamically assigned to instances, ones that are routable from outside of the OpenStack environment. Behind the scenes the "public_interface" listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Nova network allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
 
+##**Creating Floating Addresses**
+
 First, let's look at defining the addresses and assigning them manually. For this task you'll need an instance running first, if you don't have one running revisit the previous lab and start an instance:
 
 	# ssh root@node1
@@ -1411,6 +1413,8 @@ OpenStack makes you 'claim' an IP from the available list of IP addresses for th
 	| 192.168.122.201 | None        | None     | nova |
 	+-----------------+-------------+----------+------+
 
+##**Assigning an address**
+
 Next, we can assign it to an instance:
 
 	# nova add-floating-ip rhel 192.168.122.201
@@ -1427,7 +1431,9 @@ To check the success:
 
 In the above you can see that '58a576bfd7b34df1afb372c1c905798e' is my tenant-id and 'cbbb1794-0ea9-447a-a2f8-8fad74c11426' is the instance-id. Via the message bus the nova-network instance running on the compute node responsible for this instance will dynamically add the floating IP address to its public interface and will adjust the iptables firewall rules to forward traffic to the instance.
 
-However, by default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Nova ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
+##**OpenStack Security Groups**
+
+By default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Nova ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
 
 First, enable ICMP for *every* node:
 
@@ -1494,6 +1500,8 @@ The current IP addresses for the instance can always be found by using 'nova lis
 	| cbbb1794-0ea9-447a-a2f8-8fad74c11426 | rhel | ACTIVE | private=10.0.0.2, 192.168.122.201 |
 	+--------------------------------------+------+--------+-----------------------------------+
 
+##**Automating Floating IP Allocation**
+
 For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. The final part of this lab will configure this. There's a simple option that needs to be provided in the Nova configuration file (/etc/nova/nova.conf) for all compute nodes:
 
 	(On a compute node, e.g. node3 or node4)
@@ -1502,3 +1510,22 @@ For convenience, many people choose to configure OpenStack to automatically clai
 	# service openstack-nova-compute restart
 
 Just remember to make these changes (and service restarts) on all compute nodes for changes to take place.
+
+Before proceeding, return clean up the manual allocation of the '192.168.122.201' address:
+
+	# ssh root@node1
+	# source keystonerc_user
+
+	# nova-manage floating delete 192.168.122.201
+	# nova-manage floating list
+	None	192.168.122.202	None	nova	br100
+	None	192.168.122.203	None	nova	br100
+	None	192.168.122.204	None	nova	br100
+	None	192.168.122.205	None	nova	br100
+	None	192.168.122.206	None	nova	br100
+	None	192.168.122.207	None	nova	br100
+
+#**Lab 10: Configuring the Metadata Service for Customisation**
+
+##**Introduction**
+
