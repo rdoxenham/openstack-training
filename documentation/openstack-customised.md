@@ -557,7 +557,7 @@ Firstly we need to get hold of an image to upload, as part of this training, a R
 
 	# glance image-create --name "Red Hat Enterprise Linux 6.4" --is-public true \
 		--disk-format qcow2 --container-format bare \
-		--file /tmp/rhel64.qcow2
+		--file /root/rhel64.qcow2
 	+------------------+--------------------------------------+
 	| Property         | Value                                |
 	+------------------+--------------------------------------+
