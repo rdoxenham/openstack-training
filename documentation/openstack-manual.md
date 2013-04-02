@@ -1529,3 +1529,73 @@ Before proceeding, return clean up the manual allocation of the '192.168.122.201
 
 ##**Introduction**
 
+OpenStack provides a metadata service for instances to receive some instance-specific configuration after first-boot and mimics what public cloud offerings such as Amazon AWS/EC2 provide. A prime example of data contained in the metadata service is a public key, one that can be used to connect directly into an instance via ssh. Other examples include executable code ('user-data'), allocating system roles, security configurations etc. In this lab we'll do two things, register and use a public key for authentication and execute a post-boot script on our instances.
+
+OpenStack provides the metadata API via a RESTful interface, the API typically listens on each of the compute nodes and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Nova automatically routes all HTTP connections to this address to the metadata service and is therefore aware of which instance made the connection; again, this is done via NAT.
+
+The data contained by the service is created by the users upon creation of an instance, OpenStack provides multiple ways of including this data, dependent on the type of information being included. It's down to the creators of the VM image to configure the boot-up process so that it automatically connects into the metadata service and retrieves (and processes) the data. There are two primary ways of doing this, the first option is to handcrank a first-boot script that sifts through the metadata and applies any changes manually, the second is to use 'cloud-init', a package that understands the metadata service and knows how to make the required changes over a wide variety of Linux-based operating systems. For example, if a public key has been assigned to an instance, it will automatically download it and install it into the correct location.
+
+##**Installing cloud-init**
+
+cloud-init has been available in RHEL since the release of 6.4 and is also been part of Fedora since F17, therefore the package 'cloud-init' can be installed *before* the machine is sysprep'd and enabled for boot, for example, assuming you're connected to your virtual machine that you're about to sysprep:
+
+	# yum install cloud-init -y
+
+By default, cloud-init is set to automatically connect out to the metadata server upon boot. Options can be set in /etc/cloud/cloud.cfg, e.g. some options can be disabled.
+
+##**Uploading public keys**
+
+Public keys are used in OpenStack (and other cloud platforms) to uniquely identify a user, avoiding any password requirements. It's also useful when you have passwords installed by users in their VM images but they aren't shared; with a key a user can log-in and change the password to something they're happy with. When an instance is created, one of the options is to select a public key to assign or to upload one into the OpenStack database.
+
+If you're familiar with SSH keys, it's likely that you already have a public key that's ready to be uploaded into Nova, however if not, you can follow these instructions:
+
+	# ssh-keygen
+	Generating public/private rsa key pair.
+	Enter file in which to save the key (/home/user/.ssh/id_rsa):
+	Created directory '/home/user/.ssh'.
+	Enter passphrase (empty for no passphrase):
+	Enter same passphrase again:
+	Your identification has been saved in /home/user/.ssh/id_rsa.
+	Your public key has been saved in /home/user/.ssh/id_rsa.pub.
+	The key fingerprint is:
+	f7:29:b0:5e:aa:1a:73:a0:73:f8:54:c3:c6:12:8b:73 user@usersys
+	The key's randomart image is:
+	+--[ RSA 2048]----+
+	|                 |
+	|                 |
+	|    .            |
+	|   . =           |
+	|  o E * S .      |
+	|   = = . + . .   |
+	|  + = . . o o    |
+	|   = + . o .     |
+	|    o...o        |
+	+-----------------+
+
+Either way, upload your key either via the dashboard (Project --> Access & Security --> Import Keypair --> Copy/paste code from your id_rsa.pub) or from the command-line:
+
+	# source keystonerc_user
+	# nova keypair-add --pub-key /home/user/.ssh/id_rsa.pub mypublickey
+
+Based on your tenant, it will add that public key to be made available to all running instances. If cloud-init is installed on your instances, you'll be able to login to the instance using your key rather than password authentication. 
+
+Note: cloud-init sometimes disables the root user logging in and enabled a 'cloud-user' account instead; please check your VM image when you create it (/etc/cloud/cloud.cfg).
+
+##**Enabling the Metadata API**
+
+The metadata API service usually sits on the compute nodes, therefore it's easy for the routing to take place from the instances to the host that they're running on. This is also the default out-of-the-box option for Nova, and therefore it requires no additional configuration switches. It's simply a case of enabling the service and ensuring it comes up on boot, therefore on your compute nodes:
+
+	# ssh root@node3
+	# service openstack-nova-metadata-api start
+	# chkconfig openstack-nova-metadata-api on
+
+	(Repeat for node4)
+
+You can check the routing quite easily on one of the compute nodes, it shows that port 80 for 169.254.169.254 routes to the host at port 8775:
+
+	# iptables -S -t nat | grep 169.254
+	-A nova-network-PREROUTING -d 169.254.169.254/32 -p tcp -m tcp \
+		--dport 80 -j DNAT --to-destination 192.168.122.103:8775
+
+	# netstat -tunpl | grep 8775
+	tcp     0    0 0.0.0.0:8775   0.0.0.0:*   LISTEN   5956/python
