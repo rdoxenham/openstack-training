@@ -11,15 +11,16 @@ Date: March 2013
 5. **Installation and configuration of Cinder (Volume Service)**
 6. **Installation and configuration of Nova (Compute Services)**
 7. **Installation and configuration of Horizon (OpenStack Frontend)**
-8. **Deployment of first test instances**
-9. **Configuring Nova to provide metadata service for customisation**
-10. **Deploying fully customised builds using Puppet/Foreman**
-11. **Using Cinder to provide persistent data storage**
-12. **Installation and configuration of Quantum (Networking Services)**
-13. **Installation and configuration of Swift (Object Storage)**
-14. **Deploying and monitoring of instance collections using Heat**
-15. **Deploying charge-back and usage monitoring with Celiometer**
-16. **Implementing automated deployments with PackStack**
+8. **Deployment of Instances**
+9. **Attaching Floating IP's to Instances**
+10. **Configuring the Metadata Service for Customisation**
+11. **Deploying fully customised builds using Puppet/Foreman**
+12. **Using Cinder to provide persistent data storage**
+13. **Installation and configuration of Quantum (Networking Services)**
+14. **Installation and configuration of Swift (Object Storage)**
+15. **Deploying and monitoring of instance collections using Heat**
+16. **Deploying charge-back and usage monitoring with Celiometer**
+17. **Implementing automated deployments with PackStack**
 
 <!--BREAK-->
 
@@ -880,10 +881,11 @@ Then copy the following code into /etc/nova/nova.conf:
 	glance_host 192.168.122.101
 	
 	network_manager=nova.network.manager.FlatDHCPManager
-	public_interface=eth0
+	public_interface=br100
 	flat_network_bridge=br100
 	flat_interface=eth0
-	
+	multi_host=True
+
 	[keystone_authtoken]
 	admin_tenant_name = admin
 	admin_user = admin
@@ -1129,7 +1131,7 @@ You can then navigate to http://192.168.122.101/dashboard - you can use your use
 
 Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, although in future production deployments it would be prudent to use SSL for communications and configure the systems accordingly. 
 
-#**Lab 8: Deployment of first test instances**
+#**Lab 8: Deployment of Instances**
 
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
@@ -1138,9 +1140,9 @@ Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, alth
 
 We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) quantum, what we've configured so far is nova-network as it's easy to configure. 
 
-The Nova configuration file specifies multiple interfaces, a "public_interface" and a "flat_interface", the public one is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. The flat interface is one in which that is considered private, i.e. has no public connectivity and is primarily used for virtual machine interconnects and private networking. OpenStack relies on a private network for bridging public traffic and routing, therefore it's essential that we configure the private network.
+The Nova configuration file specifies multiple interfaces, a "public_interface" and a "flat_interface", the public one is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. The flat interface is one in which that is considered private, i.e. has no public connectivity and is primarily used for virtual machine interconnects and private networking. OpenStack relies on a private network for bridging public traffic and routing, therefore it's essential that we configure the private network. 
 
-In our test-bed environment, each VM has just a single network interface, therefore both the public and flat networks are provided by the same interface. In addition to these two parameters, we need a bridge interface which links the VM network to the flat interface, in this case we've called it br100 ("flat_network_bridge"). 
+In our test-bed environment, each VM has just a single network interface, therefore both the public and flat networks are provided by the same interface. The difference is that because we're using a bridge (and a SINGLE interface) to link our VM network to the physical world, our "public_interface" needs to be configured as the bridge to avoid ICMP redirections. In addition to these two parameters, we need a bridge interface which links the VM network to the flat interface, in this case we've called it br100 ("flat_network_bridge"). 
 
 A diagram explaining the above can be found [here](http://docs.openstack.org/trunk/openstack-compute/admin/content/figures/7/figures/flatdchp-net.jpg)
 
@@ -1157,7 +1159,12 @@ Every instance that starts will automatically get a private IP address within th
 
 The second element to be aware of is images; Glance provides the repository of disk images, when the Nova scheduler instructs a compute-node to start an instance it retrieves the required disk image and stores it locally on the hypervisor, it then uses this image as a backing store for any number of instances' disk images; i.e. for each instance started, a delta/qcow2 is instantiated which only tracks the differences, the underlying disk image is untouched.
 
-Finally, instances come in all different shapes and sizes, known as flavors in OpenStack. This mimics what many public cloud providers offer. Out of the box, OpenStack ships with five different offerings, each with varying numbers of virtual CPUs, memory, disk space etc. When starting an instance, this is one of the choices that will be offered to you
+Finally, instances come in all different shapes and sizes, known as flavors in OpenStack. This mimics what many public cloud providers offer. Out of the box, OpenStack ships with five different offerings, each with varying numbers of virtual CPUs, memory, disk space etc. When starting an instance, this is one of the choices that will be offered to you. 
+
+This lab will go through the following:
+
+* Creation of instances via the console and dashboard
+* Configuring a VNC proxy to view the console output
 
 ##**Starting instances via the console**
 
@@ -1236,44 +1243,55 @@ As you can see, our machine has been given a network address of 10.0.0.2 and has
 6. Ensure that 'm1.tiny' is selected in the Flavour drop-down box
 7. Select 'Launch' in the bottom right-hand corner of the pop-up window
 
-You'll notice that the instance will begin building and will provide you with an updated overview of the instance. Once it's started, lets remove it before continuing on with the lab:
+You'll notice that the instance will begin building and will provide you with an updated overview of the instance. Let's remove this VM before continuing:
 
 1. For the instance in question, in the final column 'Actions' click the drop-down arrow
 2. Select 'Terminate Instance'
 3. Confirm termination
 
-##**Viewing Console Output**
+##**Viewing Console Output (VNC)**
 
-Via the OpenStack Dashboard (Horizon) as well as via the command-line tools we can access both the console log and the VNC console, we need to configure VNC first though. OpenStack provides a component called novncproxy, this proxies connections from clients to the compute nodes running the instances themselves. Whilst it can be installed anywhere, we should install this on our cloud controller node:
+Via the OpenStack Dashboard (Horizon) as well as via the command-line tools we can access both the console log and the VNC console, we need to configure VNC first though. OpenStack provides a component called novncproxy, this proxies connections from clients to the compute nodes running the instances themselves. 
+
+Connections come into the novncproxy service only, it then creates a tunnel through to the VNC server, meaning VNC servers need not be open to everyone, purely the proxy service. Whilst it can be installed anywhere, we should install the proxy service on our cloud controller node:
 
 	# ssh root@node1
 	# source keystonerc_admin
 
 	# yum install openstack-nova-novncproxy -y
 
-Then, set the configuration for novncproxy up:
+Then, set the configuration for novncproxy up; on the cloud controller (node1):
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
-		novncproxy_port 6080
+		vnc_enabled true
+
+On the compute nodes (node3 and node4), example shown below for node3:
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
-	
+
+	# openstack-config --set /etc/nova/nova.conf DEFAULT \
+		vncproxy_url http://192.168.122.101:6080
+
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		vnc_enabled true
 	
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
-		vncserver_listen 127.0.0.1
+		vncserver_listen 192.168.122.103
 	
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
-		vncserver_proxyclient_address 127.0.0.1
+		vncserver_proxyclient_address 192.168.122.103
 
-Remember to make the same changes on the compute nodes, or alternatively copy the configuration file from node1 and change the 'my_ip' line in each of the nodes to reflect the system in question.
+Note: Remember to use '192.168.122.104' for node4 in the above entries where '192.168.122.103' is used.
 
-On both the cloud controller we need to start and enable two services for VNC to work properly, the first is the novncproxy service itself and the second is the consoleauth service which is responsible for token-based authentication:
+Finally, changes to the iptables rules on our compute nodes need to be made for incoming VNC server connections. The default firewall rules that ship out of the box with RHEL only typically allow ssh access, then when openstack-nova-compute and openstack-nova-network services start, they dynamically re-write the firewall rules to allow for NAT-based routing and security. We need to make a modification to the base iptables rules to allow access from VNC clients, namely the VNC proxy service.
+
+	# lokkit -p 5900-5999:tcp
+
+On the cloud controller we need to start and enable two services for VNC to work properly, the first is the novncproxy service itself and the second is the consoleauth service which is responsible for token-based authentication:
 
 	# service openstack-nova-novncproxy start
 	# service openstack-nova-consoleauth start
@@ -1286,4 +1304,201 @@ Finally, restart the compute services on the two compute-nodes:
 	# ssh root@node3 service openstack-nova-compute restart
 	# ssh root@node4 service openstack-nova-compute restart
 
-##**Connecting into running instances**
+VNC consoles are only available to instances created when 'vnc_enabled = True' is configured in /etc/nova/nova.conf, therefore we have to create a new instance to verify it's working correctly:
+
+	# ssh root@node1
+	# source keystonerc_user
+
+	# nova image-list
+	+--------------------------------------+------------------------------+--------+--------+
+	| ID                                   | Name                         | Status | Server |
+	+--------------------------------------+------------------------------+--------+--------+
+	| af094839-814e-4b76-99c4-9470a8b91903 | Red Hat Enterprise Linux 6.4 | ACTIVE |        |
+	+--------------------------------------+------------------------------+--------+--------+
+
+	# nova boot --flavor 1 --image af094839-814e-4b76-99c4-9470a8b91903 rhel
+	+------------------------+--------------------------------------+
+	| Property               | Value                                |
+	+------------------------+--------------------------------------+
+	| OS-DCF:diskConfig      | MANUAL                               |
+	| OS-EXT-STS:power_state | 0                                    |
+	| OS-EXT-STS:task_state  | scheduling                           |
+	| OS-EXT-STS:vm_state    | building                             |
+	| accessIPv4             |                                      |
+	| accessIPv6             |                                      |
+	| adminPass              | 6tgAuLjZPPvA                         |
+	| config_drive           |                                      |
+	| created                | 2013-04-01T10:33:17Z                 |
+	| flavor                 | m1.tiny                              |
+	| hostId                 |                                      |
+	| id                     | c38fb239-370a-4d6f-87e2-5adf34aaa936 |
+	| image                  | Red Hat Enterprise Linux 6.4         |
+	| key_name               | None                                 |
+	| metadata               | {}                                   |
+	| name                   | rhel                                 |
+	| progress               | 0                                    |
+	| security_groups        | [{u'name': u'default'}]              |
+	| status                 | BUILD                                |
+	| tenant_id              | 58a576bfd7b34df1afb372c1c905798e     |
+	| updated                | 2013-04-01T10:33:17Z                 |
+	| user_id                | 3b0682e2872849d780ecde00b8d20e4e     |
+	+------------------------+--------------------------------------+
+
+There's two ways of accessing the VNC console using novncproxy; either via the dashboard, simply select the instance and select the 'VNC' tab, or use the command-line utility and navigate to the URL specified:
+
+	# nova list
+	+--------------------------------------+------+--------+------------------+
+	| ID                                   | Name | Status | Networks         |
+	+--------------------------------------+------+--------+------------------+
+	| c38fb239-370a-4d6f-87e2-5adf34aaa936 | rhel | BUILD  | private=10.0.0.3 |
+	+--------------------------------------+------+--------+------------------+
+
+	# nova get-vnc-console rhel novnc
+	+-------+--------------------------------------------------------------------------------------+
+	| Type  | Url                                                                                  |
+	+-------+--------------------------------------------------------------------------------------+
+	| novnc | http://192.168.122.101:6080/vnc_auto.html?token=7ead2e85-6fe5-4a99-8f1e-35ae31447fb2 |
+	+-------+--------------------------------------------------------------------------------------+
+
+#**Lab 9: Attaching Floating IP's to Instances**
+
+##**Introduction**
+
+So far we've started instances, these instances have received private internal IP addresses (not typically routable outside of the OpenStack environment) and we can view the console via a VNC proxy in a web-browser. The next step is to configure access to these instances from outside of the private network.
+
+As a recap, iptables on the compute nodes provides NAT based networking to the instances, it provides them with both inbound and outbound networking using one or more physical interfaces (configured as public_interface and flat_interface). In a production environment the "flat_interface" would typically be connected to a private switch or a private/management network, completely isolated from the public facing interfaces. The issue is that public facing traffic cannot directly connect into the instances.
+
+The "public_interface" allows additional IP addresses to be dynamically assigned to instances, ones that are routable from outside of the OpenStack environment. Behind the scenes the "public_interface" listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Nova network allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
+
+First, let's look at defining the addresses and assigning them manually. For this task you'll need an instance running first, if you don't have one running revisit the previous lab and start an instance:
+
+	# ssh root@node1
+	# source keystonerc_admin
+
+It's possible to create an entire range of IP addresses, but as we're only using a single interface we'll define a subset of addresses:
+
+	# nova-manage floating create 192.168.122.201
+	# nova-manage floating create 192.168.122.202
+	# nova-manage floating create 192.168.122.203
+	# nova-manage floating create 192.168.122.204
+	# nova-manage floating create 192.168.122.205
+	# nova-manage floating create 192.168.122.206
+
+	# nova-manage floating list
+	None	192.168.122.201	None	nova	br100
+	None	192.168.122.202	None	nova	br100
+	None	192.168.122.203	None	nova	br100
+	None	192.168.122.204	None	nova	br100
+	None	192.168.122.205	None	nova	br100
+	None	192.168.122.206	None	nova	br100
+
+Next, switch back to the 'user' role for Keystone and make sure your image is visible:
+
+	# source keystonerc_user
+	# nova list
+	+--------------------------------------+------+--------+------------------+
+	| ID                                   | Name | Status | Networks         |
+	+--------------------------------------+------+--------+------------------+
+	| cbbb1794-0ea9-447a-a2f8-8fad74c11426 | rhel | ACTIVE | private=10.0.0.2 |
+	+--------------------------------------+------+--------+------------------+
+
+OpenStack makes you 'claim' an IP from the available list of IP addresses for the tenant (project) you're currently running in before you can assign it to an instance:
+
+	# nova-manage floating-ip-create
+	+-----------------+-------------+----------+------+
+	| Ip              | Instance Id | Fixed Ip | Pool |
+	+-----------------+-------------+----------+------+
+	| 192.168.122.201 | None        | None     | nova |
+	+-----------------+-------------+----------+------+
+
+Next, we can assign it to an instance:
+
+	# nova add-floating-ip rhel 192.168.122.201
+
+To check the success:
+
+	# nova-manage floating list
+	58a576bfd7b34df1afb372c1c905798e 192.168.122.201 cbbb1794-0ea9-447a-a2f8-8fad74c11426	nova	br100
+	None	192.168.122.202	None	nova	br100
+	None	192.168.122.203	None	nova	br100
+	None	192.168.122.204	None	nova	br100
+	None	192.168.122.205	None	nova	br100
+	None	192.168.122.206	None	nova	br100
+
+In the above you can see that '58a576bfd7b34df1afb372c1c905798e' is my tenant-id and 'cbbb1794-0ea9-447a-a2f8-8fad74c11426' is the instance-id. Via the message bus the nova-network instance running on the compute node responsible for this instance will dynamically add the floating IP address to its public interface and will adjust the iptables firewall rules to forward traffic to the instance.
+
+However, by default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Nova ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
+
+First, enable ICMP for *every* node:
+
+	# nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
+	+-------------+-----------+---------+-----------+--------------+
+	| IP Protocol | From Port | To Port | IP Range  | Source Group |
+	+-------------+-----------+---------+-----------+--------------+
+	| icmp        | -1        | -1      | 0.0.0.0/0 |              |
+	+-------------+-----------+---------+-----------+--------------+
+
+Within a few seconds (for the nova-network on the compute nodes to pick the changes up) you should be able to ping our floating IP:
+
+	# ping -c4 192.168.122.201
+	PING 192.168.122.201 (192.168.122.201) 56(84) bytes of data.
+	64 bytes from 192.168.122.201: icmp_seq=1 ttl=63 time=6.55 ms
+	64 bytes from 192.168.122.201: icmp_seq=2 ttl=63 time=2.47 ms
+	...
+
+We can ping, but we can't SSH yet, as that's still not allowed:
+
+	# ssh -v root@192.168.122.201
+	OpenSSH_5.3p1, OpenSSL 1.0.0-fips 29 Mar 2010
+	debug1: Reading configuration data /etc/ssh/ssh_config
+	debug1: Applying options for *
+	debug1: Connecting to 192.168.122.201 [192.168.122.201] port 22.
+	debug1: connect to address 192.168.122.201 port 22: Connection timed out
+	ssh: connect to host 192.168.122.201 port 22: Connection timed out
+
+Next, let's try adding a manual rule, to allow SSH access *just* for our current running instance:
+
+	# nova secgroup-add-rule default tcp 22 22 192.168.122.201/0
+	+-------------+-----------+---------+-------------------+--------------+
+	| IP Protocol | From Port | To Port | IP Range          | Source Group |
+	+-------------+-----------+---------+-------------------+--------------+
+	| tcp         | 22        | 22      | 192.168.122.201/0 |              |
+	+-------------+-----------+---------+-------------------+--------------+
+
+And, let's retry the SSH connection..
+
+	# ssh root@192.168.122.201
+	The authenticity of host '192.168.122.201 (192.168.122.201)' can't be established.
+	RSA key fingerprint is c8:ea:0e:9d:19:e6:74:de:8c:4c:d5:6b:78:5d:b5:41.
+	Are you sure you want to continue connecting (yes/no)? yes
+	Warning: Permanently added '192.168.122.201' (RSA) to the list of known hosts.
+	root@192.168.122.201's password: 
+	[root@rhel ~]#
+
+Let's remove this rule and replace it with a rule that allows SSH access to all nodes:
+
+	# nova secgroup-delete-rule default tcp 22 22 192.168.122.201/0
+	# nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
+	+-------------+-----------+---------+-----------+--------------+
+	| IP Protocol | From Port | To Port | IP Range  | Source Group |
+	+-------------+-----------+---------+-----------+--------------+
+	| tcp         | 22        | 22      | 0.0.0.0/0 |              |
+	+-------------+-----------+---------+-----------+--------------+
+
+The current IP addresses for the instance can always be found by using 'nova list', provided that the instance exists within your tenant:
+
+	# nova list
+	+--------------------------------------+------+--------+-----------------------------------+
+	| ID                                   | Name | Status | Networks                          |
+	+--------------------------------------+------+--------+-----------------------------------+
+	| cbbb1794-0ea9-447a-a2f8-8fad74c11426 | rhel | ACTIVE | private=10.0.0.2, 192.168.122.201 |
+	+--------------------------------------+------+--------+-----------------------------------+
+
+For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. The final part of this lab will configure this. There's a simple option that needs to be provided in the Nova configuration file (/etc/nova/nova.conf) for all compute nodes:
+
+	(On a compute node, e.g. node3 or node4)
+	# openstack-config --set /etc/nova/nova.conf DEFAULT auto_assign_floating_ip True
+	# service openstack-nova-network restart
+	# service openstack-nova-compute restart
+
+Just remember to make these changes (and service restarts) on all compute nodes for changes to take place.
