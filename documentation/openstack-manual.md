@@ -536,7 +536,7 @@ We can now start and enable these services upon boot:
 	# service openstack-glance-registry start && chkconfig openstack-glance-registry on
 	# service openstack-glance-api start && chkconfig openstack-glance-api on
 
-To complete the integration, a service an an associated end-point need to be created in Keystone:
+To complete the integration, a service and an associated end-point need to be created in Keystone:
 
 	# source ~/keystonerc_admin
 	
