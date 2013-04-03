@@ -823,6 +823,7 @@ Then copy the following code into /etc/nova/nova.conf:
 	public_interface=br100
 	flat_network_bridge=br100
 	flat_interface=eth0
+	fixed_range=10.0.0.0/24
 	multi_host=True
 
 	[keystone_authtoken]
