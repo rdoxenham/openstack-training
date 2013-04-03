@@ -350,6 +350,8 @@ From Folsom onwards, all OpenStack services utilise Keystone for authentication.
 	| tenantId |                                   |
 	+----------+-----------------------------------+
 
+Please note that using a name other than 'admin' won't work and is such discouraged !!
+
 	# keystone role-create --name admin
 	+----------+----------------------------------+
 	| Property |              Value               |
