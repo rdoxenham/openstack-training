@@ -269,6 +269,8 @@ Either way, to enable the repository-
 
 	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
 	
+If updates to the glibc or the kernel have been performed, then reboot the system to take them in account:
+
 	# reboot
 
 ##**Installing Keystone**
