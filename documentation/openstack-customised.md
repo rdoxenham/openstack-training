@@ -780,6 +780,7 @@ We need to deploy the Nova components on our first node that will provide the AP
 	# ssh root@openstack-01
 	# source keystonerc_admin
 
+	# yum install openstack-nova -y
 	# openstack-db --init --service nova --password <password>
 
 A few necessary changes to the Nova configuration file are required in order to establish integration with other components that we've already setup. There are over 570 configuration options within Nova at the time of writing this so it gets extremely difficult to troubleshoot using the configuration file. Many of the options are commented out but it does provide you with every option possible. For ease of deployment, below is a basic Nova configuration file which is tailored to the environment that we've been creating.
