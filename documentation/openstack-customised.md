@@ -1336,7 +1336,7 @@ Next, switch back to the 'user' role for Keystone and make sure your image is vi
 
 OpenStack makes you 'claim' an IP from the available list of IP addresses for the tenant (project) you're currently running in before you can assign it to an instance:
 
-	# nova-manage floating-ip-create
+	# nova floating-ip-create
 	+-----------------+-------------+----------+------+
 	| Ip              | Instance Id | Fixed Ip | Pool |
 	+-----------------+-------------+----------+------+
