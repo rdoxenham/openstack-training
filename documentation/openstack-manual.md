@@ -878,7 +878,7 @@ Then copy the following code into /etc/nova/nova.conf:
 	qpid_hostname=192.168.122.101
 	qpid_port=5672
 
-	glance_host 192.168.122.101
+	glance_host=192.168.122.101
 	
 	network_manager=nova.network.manager.FlatDHCPManager
 	public_interface=br100
@@ -1002,7 +1002,7 @@ We're now finished with node3 for now, we need to return to our cloud controller
 
 Next, let's make sure that our integration into other components is working correctly. We can use 'nova-manage' to provide us with statistics and monitoring for Nova:
 
-	# nove-manage service list
+	# nova-manage service list
 	Binary           Host         Zone      Status     State   Updated_At
 	nova-scheduler   node1        nova      enabled    :-)     2013-03-31 10:47:20
 	nova-network     node3        nova      enabled    :-)     2013-03-31 10:47:20
