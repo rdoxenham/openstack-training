@@ -1013,7 +1013,7 @@ If you watch the nova logs on one of the compute nodes, you'll see the nodes che
 
 Finally, we need to create a logical network for our instances. This is a private network that is used for internal communication between instances and their underlying services. Connecting to instances will not be possible from outside of this network at this time, but this is an essential step. The networking provided by iptables will ensure that network traffic connecting in via this private network gets automatically routed to the correct nodes.
 
-	# nova-manage network create private 10.0.0.0/24 1 256 --bridge=br100
+	# nova-manage network create private 10.0.0.0/24 --multi_host=T
 
 
 #**Lab 7: Installation and configuration of Horizon (Frontend)**
