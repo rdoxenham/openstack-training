@@ -140,29 +140,29 @@ To save time, we'll install a single virtual machine and just clone it afterward
 
 ##**Creating virtual machines**
 
-	# virt-install --name node1 --ram 1000 --file /var/lib/libvirt/images/node1.img \
+	# virt-install --name openstack-controller --ram 1000 --file /var/lib/libvirt/images/openstack-controller.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
 		--os-variant rhel6 --network network:default,mac=52:54:00:00:00:01
-	# virt-viewer node1
+	# virt-viewer openstack-controller
 
 I would advise that you choose a basic or minimal installation option and don't install any window managers, as these are virtual machines we want to keep as much resource as we can available, plus a graphical view is not required. Partition layouts can be set to default at this stage also, just make sure the time-zone is set correctly and that you provide a root password. When asked for a hostname, I suggest you don't use anything unique, just specify "server" or "node" as we will be cloning and want things to be 
 
 After the machine has finished installing it will automatically be shut-down, we have to 'sysprep' it to make sure that it's ready to be cloned, this removes any "hardware"-specific elements so that things like networking come up as if they were created individually. In addition, one step ensures that networking comes up at boot time which it won't do by default if it wasn't chosen in the installer.
 
-	# yum install libguestfs-tools -y && virt-sysprep -d node1
+	# yum install libguestfs-tools -y && virt-sysprep -d openstack-controller
 	...
 
-	# virt-edit -d node1 /etc/sysconfig/network-scripts/ifcfg-eth0 -e 's/^ONBOOT=.*/ONBOOT="yes"/'
+	# virt-edit -d openstack-controller /etc/sysconfig/network-scripts/ifcfg-eth0 -e 's/^ONBOOT=.*/ONBOOT="yes"/'
 	
-	# virt-clone -o node1 -n node2 -f /var/lib/libvirt/images/node2.img --mac 52:54:00:00:00:02
-	Allocating 'node2.img'
+	# virt-clone -o openstack-controller -n openstack-compute1 -f /var/lib/libvirt/images/openstack-compute1.img --mac 52:54:00:00:00:02
+	Allocating 'openstack-compute1.img'
 
-	Clone 'node2' created successfully.
-	# virt-clone -o node1 -n node3 -f /var/lib/libvirt/images/node3.img --mac 52:54:00:00:00:03
+	Clone 'openstack-compute1' created successfully.
+	# virt-clone -o openstack-controller -n node3 -f /var/lib/libvirt/images/node3.img --mac 52:54:00:00:00:03
 	Allocating 'node3.img'
 
 	Clone 'node3' created successfully.
-	# virt-clone -o node1 -n node4 -f /var/lib/libvirt/images/node4.img --mac 52:54:00:00:00:04
+	# virt-clone -o openstack-controller -n node4 -f /var/lib/libvirt/images/node4.img --mac 52:54:00:00:00:04
 	Allocating 'node4.img'
 
 	Clone 'node4' created successfully.
@@ -185,8 +185,8 @@ As an *optional* step for convenience, we can leave the virtual machines as DHCP
   	<ip address='192.168.122.1' netmask='255.255.255.0'>
     		<dhcp>
       			<range start='192.168.122.2' end='192.168.122.100' />
-	      		<host mac='52:54:00:00:00:01' name='node1' ip='192.168.122.101' />
-      			<host mac='52:54:00:00:00:02' name='node2' ip='192.168.122.102' />
+	      		<host mac='52:54:00:00:00:01' name='openstack-controller' ip='192.168.122.101' />
+      			<host mac='52:54:00:00:00:02' name='openstack-compute1' ip='192.168.122.102' />
       			<host mac='52:54:00:00:00:03' name='node3' ip='192.168.122.103' />
       			<host mac='52:54:00:00:00:04' name='node4' ip='192.168.122.104' />
     		</dhcp>
@@ -213,15 +213,15 @@ Note: It's possible to configure the guests manually with static IP addresses af
 For ease of connection to your virtual machine instances, it would be prudent to add the machines to your /etc/hosts file-
 
 	# cat >> /etc/hosts <<EOF
-	192.168.122.101 node1
-	192.168.122.102 node2
+	192.168.122.101 openstack-controller
+	192.168.122.102 openstack-compute1
 	192.168.122.103 node3
 	192.168.122.104 node4
 	EOF
 
 Finally, start your first virtual machine that'll be used in the next lab:
 
-	# virsh start node1
+	# virsh start openstack-controller
 
 #**Lab 3: Installation and configuration of Keystone (Identity Service)**
 
@@ -239,11 +239,11 @@ Finally, start your first virtual machine that'll be used in the next lab:
 
 Keystone is the identity management component of OpenStack; it supports token-based, username/password and AWS-style logins and is responsible for providing a centralised directory of users mapped to the services they are granted to use. It acts as the common authentication system across the whole of the OpenStack environment and integrates well with existing backend directory services such as LDAP. In addition to providing a centralised repository of users, Keystone provides a catalogue of services deployed in the environment, allowing service discovery with their endpoints (or API entry-points) for access. Keystone is responsible for governance in an OpenStack cloud, it provides a policy framework for allowing fine grained access control over various components and responsibilities in the cloud environment.
 
-As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (node1) and turn this into a 'cloud controller' in which, Keystone will be a crucial part of that infrastructure.
+As keystone provides the foundation for everything that OpenStack uses this will be the first thing that is installed. For this, we'll take the first node (openstack-controller) and turn this into a 'cloud controller' in which, Keystone will be a crucial part of that infrastructure.
 
 ##**Preparing the machine**
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 
 This system was deployed via the DVD, so we'll need to register and subscribe this system to the OpenStack channels. Note that if you have repositories available locally, you can skip these next few steps.
 
@@ -267,7 +267,7 @@ We need to enable the OpenStack repositories next, depending on whether you chos
 
 Either way, to enable the repository-
 
-	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+	# yum-config-manager --enable rhel-server-ost-6-3-rpms --setopt="rhel-server-ost-6-3-rpms.priority=1"
 	
 	# reboot
 
@@ -277,8 +277,9 @@ Now that the system is set-up for package repositories, has been fully updated a
 
 	# yum install openstack-keystone openstack-utils dnsmasq-utils -y
 
-By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step. The script will ask you to choose a new password for MySQL, make sure you remember this!
+By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step. You can choose an alternative password than the one listed below but remember it!
 
+	# /usr/bin/mysqladmin -u root password 'redhat'
 	# openstack-db --init --service keystone
 
 Keystone uses tokens to authenticate users, even when using username/passwords tokens are used. Once a users identity has been verified with an account/password pair, a short-lived token is issued, these tokens are used by OpenStack components whilst working on behalf of a user. When setting up Keystone we need to create a default administration token which is set in the /etc/keystone/keystone.conf file. We need to generate this and populate the configuration file with this value so that it persists, thankfully there's a simple way of doing this-
@@ -290,6 +291,11 @@ Keystone uses tokens to authenticate users, even when using username/passwords t
 	# openstack-config --set /etc/keystone/keystone.conf DEFAULT admin_token $SERVICE_TOKEN
 
 Note: As we have exported our SERVICE_TOKEN and SERVICE_ENDPOINT, it will allow us to run keystone commands without specifying a username/password (or token) combination via the command-line; later in this lab we'll write an rc which avoids us having to provide them to administer keystone.
+
+OpenStack Keystone uses PKI to validate token authenticity, the appropriate SSL certificates must be generated, for future reference custom configuration can be made in /etc/keystone/ssl/certs/openssl.conf, but for the purposes of this training we'll use the defaults. There's a current bug with keystone-manage in that it doesn't configure the permissions correctly for the keystone process to access the certificates, so we'll workaround that:
+
+	# keystone-manage pki_setup
+	# chown -R keystone:keystone /etc/keystone/ssl
 
 At this point, we can start the Keystone service and enable it at boot-time-
 
@@ -336,7 +342,7 @@ What you'll notice in the output is that it also assigns the endpoint to a 'regi
 
 ##**Creating Users**
 
-From Folsom onwards, all OpenStack services utilise Keystone for authentication. As previously mentioned, Keystone uses tokens that are generated via user authentication, e.g. via a username/password combination. The next few steps create a user account, a 'tenant' (a group of users, or a project) and a 'role' which is used to determine permissions cross the stack. You can choose your own password here, just remember what it is as we'll use it later:
+From Folsom onwards, all OpenStack services utilise Keystone for authentication. As previously mentioned, Keystone uses tokens that are generated via user authentication, e.g. via a username/password combination. The next few steps create a user account, a 'tenant' (a group of users, or a project) and a 'role' which is used to determine permissions across the stack. You can choose your own password here, just remember what it is as we'll use it later:
 
 	# keystone user-create --name admin --pass <password>
 	+----------+-----------------------------------+
@@ -346,7 +352,6 @@ From Folsom onwards, all OpenStack services utilise Keystone for authentication.
 	| enabled  |              True                 |
 	| id       | 679cae35033f4bbc9a18aff0c15b7a99  |
 	| name     |              admin                |
-	| password |               ...                 |
 	| tenantId |                                   |
 	+----------+-----------------------------------+
 
@@ -357,6 +362,8 @@ From Folsom onwards, all OpenStack services utilise Keystone for authentication.
 	|    id    | 729b4119afaf443eadc8e92f74d43103 |
 	|   name   |              admin               |
 	+----------+----------------------------------+
+	
+Note: All roles are respected by 'policy.json' on the Keystone machine. The 'admin' role used above is one that comes 'out of the box' in OpenStack. You can create roles to do just about anything in a RBAC configuration, but remember that roles won't be respected unless they are detailed in policy.json.
 
 	# keystone tenant-create --name admin
 	+-------------+----------------------------------+
@@ -368,11 +375,9 @@ From Folsom onwards, all OpenStack services utilise Keystone for authentication.
 	|     name    |              admin               |
 	+-------------+----------------------------------+
 
-Finally we can give the user a role and assign that user to the tenant. Remember that the following command is specific to the id's in *my* environment, you'll need to adjust the id's accordingly based on the results of the previously issued commands:
+Finally we can give the user a role and assign that user to the tenant. Note that we're using usernames, roles and tenants by their name here, it's possible to use their id's instead. 
 
-	# keystone user-role-add --user-id 679cae35033f4bbc9a18aff0c15b7a99 \
-		--role-id 729b4119afaf443eadc8e92f74d43103 \
-		--tenant-id 4ab1c31fcd2741afa551b5f76146abf6
+	# keystone user-role-add --user admin --role admin --tenant admin
 
 This admin account will be used for Keystone administration, to save time and to not have to worry about specifying usernames/passwords or tokens on the command-line, it's prudent to create an rc file which will load in environment variables; saving a lot of time. This can be copied & pasted, although make sure you change the IP address to match the end-point of your Keystone server and provide the correct password:
 
@@ -384,16 +389,12 @@ This admin account will be used for Keystone administration, to save time and to
 	export PS1='[\u@\h \W(keystone_admin)]\$ '
 	EOF
 
-Note: We're using the 35357 port above as this is for the administrator API.
-
-The rc can be used by typing:
-
-	# source ~/keystonerc_admin
+Note: We're using the 35357 port above as this is for the administrator API, all other requests go via port 5000.
 
 You can test the file by logging out of your ssh session, logging back in and trying the following-
 
 	# logout
-	# ssh root@node1
+	# ssh root@openstack-controller
 
 	# keystone user-list
 	Expecting authentication method via
@@ -442,18 +443,16 @@ I suggest that you create a tenant named 'training' so that we can refer to this
 	|     name    |             training             |
 	+-------------+----------------------------------+
 
-Remember to tie the user to the role and place that user into the tenant, utilising your own id's that were returned from your own commands:
+Remember to tie the user to the role and place that user into the tenant, utilising your own value for your user:
 
-	# keystone user-role-add --user-id 3b0682e2872849d780ecde00b8d20e4e \
-		--role-id 9b8ba13292be47b7aae50947b89db5df \
-		--tenant-id 58a576bfd7b34df1afb372c1c905798e
+	# keystone user-role-add --user <your user> --role user --tenant training
 
 In the same way that we created a Keystone rc file for the administrator account, we should create one for this new user.
 
 	# cat >> ~/keystonerc_user <<EOF
 	export OS_USERNAME=<your user>
 	export OS_TENANT_NAME=training
-	export OS_PASSWORD=<password>
+	export OS_PASSWORD=<your password>
 	export OS_AUTH_URL=http://192.168.122.101:5000/v2.0/
 	export PS1='[\u@\h \W(keystone_user)]\$ '
 	EOF
@@ -505,7 +504,7 @@ Keystone optionally is used to store the end-point for Glance and provides a mec
 
 As we'll be using the same 'cloud controller' node as before, i.e. the one we deployed Keystone onto, we need to open up a shell to that machine:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 
 Then install the required components:
 
@@ -514,20 +513,65 @@ Then install the required components:
 Glance makes use of MySQL to store the glance-registry data, i.e. all of the image metadata. Therefore we need to create the initial database:
 
 	# openstack-db --init --service glance
+	
+NOTE: If the above fails, you'll need to manually create the database...
+
+	# mysql -u root -p
+	(Enter your 'mysql root' password)
+	
+	mysql> CREATE DATABASE glance;
+	mysql> CREATE USER 'glance'@'localhost' IDENTIFIED BY 'glance';
+	mysql> CREATE USER 'glance'@'%' IDENTIFIED BY 'glance';
+	mysql> GRANT ALL ON glance.* TO 'glance'@'localhost';
+	mysql> GRANT ALL ON glance.* TO 'glance'@'%';
+	mysql> exit
+	Bye
+	
+	# glance-manage db_sync
 
 ##**Integrating Glance with Keystone**
 
-Before we start the Glance service, we need to configure it to speak to Keystone to manage authentication. We make heavy use of the openstack-config tool here for convenience although manually modifying the configuration files is also possible. We provide Glance with the required username and password for authenticating as the 'admin' user; which is required to do background user-token checks.
+Before we start the Glance service, we need to configure it to speak to Keystone to manage authentication. We make heavy use of the openstack-config tool here for convenience although manually modifying the configuration files is also possible. We provide Glance with a username and password combination that has the 'admin' role, this is to check the validity of tokens provided to Glance.
+
+Firstly, we create a separate tenant to house our 'service users', i.e. the credentials used by the individual services.
+
+	# source ~/keystonerc_admin
+	# keystone tenant-create --name services
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	| description |                                  |
+	|   enabled   |               True               |
+	|      id     | 44f64fb7e72a4d219d5f16b936c8bc25 |
+	|     name    |             services             |
+	+-------------+----------------------------------+
+	
+Next, create a user for Glance and attach it to the 'services' tenant and giving it the correct 'admin' role:
+
+	# keystone user-create --name glance --pass glancepasswd
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|  email   |                                  |
+	| enabled  |               True               |
+	|    id    | 46bdec9fe05b467099d6e260a280c0db |
+	|   name   |              glance              |
+	| tenantId |                                  |
+	+----------+----------------------------------+
+	
+	# keystone user-role-add --user glance --role admin --tenant services
+	
+Now we have to associate 
 
 	# openstack-config --set /etc/glance/glance-api.conf paste_deploy flavor keystone
-	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_tenant_name admin
-	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_user admin
-	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_password <admin password>
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_tenant_name services
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_user glance
+	# openstack-config --set /etc/glance/glance-api.conf keystone_authtoken admin_password glancepasswd
 
 	# openstack-config --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
-	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_tenant_name admin
-	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_user admin
-	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_password <admin password>
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_tenant_name services
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_user glance
+	# openstack-config --set /etc/glance/glance-registry.conf keystone_authtoken admin_password glancepasswd
 
 Note: One additional configuration option change that would usually need to be made is the 'auth_host' option in both /etc/glance/glance-api.conf and /etc/glance/glance-registry.conf, but as we're using Keystone on the *same* server as Glance we can ignore this option as the default behavior is to look at localhost.
 
@@ -536,7 +580,7 @@ We can now start and enable these services upon boot:
 	# service openstack-glance-registry start && chkconfig openstack-glance-registry on
 	# service openstack-glance-api start && chkconfig openstack-glance-api on
 
-To complete the integration, a service an an associated end-point need to be created in Keystone:
+To complete the integration, a service and an associated end-point need to be created in Keystone:
 
 	# source ~/keystonerc_admin
 	
@@ -577,53 +621,49 @@ If you get an empty table it was successful, otherwise we may need to check the 
 
 As previously mentioned, images uploaded to Glance should be 're-initialised' or 'syspreped' so that any system-specific configuration is wiped away, this ensures that there are no conflicts between instances that are started. It's common practice to find pre-defined virtual machine images online that contain a base operating system and perhaps a set of packages for a particular purpose. The next few steps will allow you to take such an image and upload it into the Glance registry. 
 
-Firstly, we need to get access to an image, if you're following this guide from Lab 1 you'll realise that we built a number of virtual machines to run our OpenStack virtual machines themselves, their own disk images can be copied for this purpose, and we've already used 'virt-sysprep' to remove any system-specific configuration. Let's take one of those virtual machine images and copy it to our node running Glance. First we have to create a new disk image from our 'node4' machine by converting the old disk image type to a 'qcow2' format. The reason why we convert it is so that we don't copy the full 30GB disk size, we only copy the 'used' data; if it's in the 'raw' format, the filesystem thinks the entire 30GB is to be copied.
+Firstly, we need to get access to an image, if you're following the training course, get hold of the RHEL 6.4 Cloud template from your instructor... 
 
-	(First, open up a *new* terminal on your physical host machine, Note: NOT nodeX)
+	(On your hypervisor host)# scp /path/to/rhel64-cloud.qcow2 root@192.168.122.101:/root
 
-	# qemu-img convert -O qcow2 /var/lib/libvirt/images/node4.img /tmp/rhel64.qcow2
-	# scp /tmp/rhel64.qcow2 root@node1:/tmp/rhel64.img
-	# rm /tmp/rhel64.qcow2
-
-Return back to your node1 machine where you have your ssh session running. Let's verify that the disk image was copied across successfully and has the correct properties:
+Return back to your openstack-controller machine where you have your ssh session running. Let's verify that the disk image was copied across successfully and has the correct properties:
 
 	# yum install qemu-img -y
 
-	# qemu-img info /tmp/rhel64.qcow2
-	image: /tmp/rhel64.qcow2
+	# qemu-img info /root/rhel64-cloud.qcow2
+	image: rhel64-cloud.qcow2
 	file format: qcow2
-	virtual size: 30G (32212254720 bytes)
-	disk size: 2.6G
+	virtual size: 10G (10737418240 bytes)
+	disk size: 840M
 	cluster_size: 65536
 
 Note: If you've opted to use a disk-image you've already created outside of these labs, I strongly advise that you use 'virt-sysprep' to prepare the machine before importing.
 
-Next we can create a new image within Glance and import its contents, it may take a few minutes to copy the data. The 'user' account should be used to upload the image rather than the administrator:
+Next we can create a new image within Glance and import its contents, it may take a few minutes to copy the data. The 'admin' account should be used to upload the image, we'll then make it public to every tenant, i.e. everybody:
 
-	# source ~/keystonerc_user
+	# source ~/keystonerc_admin
 
 	# glance image-create --name "Red Hat Enterprise Linux 6.4" --is-public true \
 		--disk-format qcow2 --container-format bare \
-		--file /tmp/rhel64.qcow2
+		--file /root/rhel64-cloud.qcow2
 	+------------------+--------------------------------------+
 	| Property         | Value                                |
 	+------------------+--------------------------------------+
-	| checksum         | 8935cd7b7e5008edc7806f446828fa8d     |
+	| checksum         | ace8786fb3216bcc16e47ffdf1d53791     |
 	| container_format | bare                                 |
-	| created_at       | 2013-03-28T00:48:15                  |
+	| created_at       | 2013-06-10T11:08:06                  |
 	| deleted          | False                                |
 	| deleted_at       | None                                 |
 	| disk_format      | qcow2                                |
-	| id               | af094839-814e-4b76-99c4-9470a8b91903 |
+	| id               | 008b9660-d700-48c9-908a-f9f3170e6405 |
 	| is_public        | True                                 |
 	| min_disk         | 0                                    |
 	| min_ram          | 0                                    |
 	| name             | Red Hat Enterprise Linux 6.4         |
-	| owner            | 58a576bfd7b34df1afb372c1c905798e     |
+	| owner            | 9a34e557191f4e2db8e25aabf472f767     |
 	| protected        | False                                |
-	| size             | 2805858304                           |
+	| size             | 880607232                            |
 	| status           | active                               |
-	| updated_at       | 2013-03-28T00:49:07                  |
+	| updated_at       | 2013-06-10T11:08:19                  |
 	+------------------+--------------------------------------+
 
 
@@ -643,44 +683,42 @@ Cinder is OpenStack's volume service, it's responsible for managing persistent b
 
 ##**Installing Cinder**
 
-For the installation of Cinder, we'll use our second virtual machine that we created, it will provide one of the core services in the OpenStack environment and doesn't provide compute resource to the cluster. As per the previous setup, we need to quickly register this machine with the Red Hat Network and make sure it has access to the required components. Brief instructions are provided below, further details can be found in Lab 3:
+We'll install Cinder on our cloud controller machine, i.e. 'openstack-controller', we can place Cinder anywhere in the cluster but for convenience of the labs we'll keep the core services on this node. Before we install the components, we need to create a new user, just like the previous lab to authenticate user tokens:
 
-	# virsh start node2
-	# ssh root@node2
-
-	(On node2)
-	# subscription-manager register
-	# subscription-manager list --available
-	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+	# source ~/keystonerc_admin
+	# keystone user-create --name cinder --pass cinderpasswd
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|  email   |                                  |
+	| enabled  |               True               |
+	|    id    | 063016ac322a45ebb231d4bd5f03cd4d |
+	|   name   |              cinder              |
+	| tenantId |                                  |
+	+----------+----------------------------------+
 	
-	# yum install yum-utils -y
-	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
-	# yum update -y && reboot
+Add this user into the correct 'services' tenant and give it the 'admin' role:
+	
+	# keystone user-role-add --user cinder --role admin --tenant services
+		
+Next, install the Cinder components:
 
-Once the machine is fully up to date and has been rebooted, we can begin the installation of Cinder:
-
-	# ssh root@node2
 	# yum install openstack-cinder -y
 
 ##**Configuring Cinder**
 
-Cinder uses a MySQL database to hold information about the volumes that it's managing; it's possible to have this data sitting in the same database as the other services we've created, e.g. Keystone and Glance on 'node1' however for simplicity, we'll configure an additional database on 'node2' using openstack-db:
+Cinder uses a MySQL database to hold information about the volumes that it's managing, we'll simply add this database into the already existant MySQL deployment:
 
-	# yum install openstack-utils -y
 	# openstack-db --init --service cinder --password <password>
 
-As with all other OpenStack services, Cinder uses Keystone for authentication, we'll need to configure this to communicate with Keystone running on node1. We can use the handy 'openstack-config' tool to make these changes for us:
+As with all other OpenStack services, Cinder uses Keystone for authentication, we'll need to configure this to communicate with Keystone running on openstack-controller. We can use the handy 'openstack-config' tool to make these changes for us:
 
 	# openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
-	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_tenant_name admin
-	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_user admin
-	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_password <Keystone admin password>
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_tenant_name services
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_user cinder
+	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken admin_password cinderpasswd
 
-Additionally, let's update Cinder so it knows which host our Keystone server runs on, note that if you're not using the IP addresses created in Lab 2, your network configuration may be different to the example below:
-
-	# openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_host 192.168.122.101
-
-At the start of this guide we created an AMQP/qpid server for component communication, Cinder is one of those components that makes use of this message queue. We will need to modify our Cinder configuration to point to the server running on node1:
+At the start of this guide we created an AMQP/qpid server for component communication, Cinder is one of those components that makes use of this message queue. We will need to modify our Cinder configuration to point to the server running on openstack-controller:
 
 	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_hostname 192.168.122.101
 	# openstack-config --set /etc/cinder/cinder.conf DEFAULT qpid_port 5672
@@ -691,7 +729,7 @@ The easiest way to get started with Cinder volumes is to just use it's basic in-
 
 Warning: The instructions below are not recommended for any form of production environment, they provide a mechanism of creating the required volume group but should not be relied on. An additional disk of partition should be used instead...
 
-	# truncate --size 20G /cinder-volumes
+	# dd if=/dev/zero of=/cinder-volumes bs=1 count=0 seek=5G
 	# losetup -fv /cinder-volumes
 	Loop device is /dev/loop0
 
@@ -715,7 +753,7 @@ Warning: The instructions below are not recommended for any form of production e
 	Max PV                0
 	Cur PV                1
 	Act PV                1
-	VG Size               20.00 GiB
+	VG Size               5.00 GiB
 	PE Size               4.00 MiB
 	Total PE              5119
 	Alloc PE / Size       0 / 0   
@@ -741,10 +779,7 @@ Don't forget to enable these services on:
 
 ##**Integrating Cinder with Keystone**
 
-Finally, endpoints for the Cinder service need to be added to Keystone. We will need to connect back into our machine hosting Keystone, node1. I'd advise an additional terminal be opened up for this so we can keep our connection open to node2.
-
-	# ssh root@node1
-	# source keystonerc_admin
+Finally, endpoints for the Cinder service need to be added to Keystone:
 
 	# keystone service-create --name cinder --type volume --description "Cinder Volume Service"
 	+-------------+----------------------------------+
@@ -756,19 +791,19 @@ Finally, endpoints for the Cinder service need to be added to Keystone. We will 
 	|     type    |              volume              |
 	+-------------+----------------------------------+
 
-And then the endpoint, not forgetting to use the id from the previous command, *NOT* the one you see above in this guide. Also note that we're setting the endpoint to be sitting at node2 and not node1, hence the 192.168.122.102 usage:
+And then the endpoint, not forgetting to use the id from the previous command, *NOT* the one you see above in this guide. Also note that we're setting the endpoint to be sitting at openstack-compute1 and not openstack-controller, hence the 192.168.122.102 usage:
 
 	# keystone endpoint-create --service_id 94ed0a651b4342e2a2c25c00c2b271d8 \
-		--publicurl "http://192.168.122.102:8776/v1/\$(tenant_id)s" \
-		--adminurl "http://192.168.122.102:8776/v1/\$(tenant_id)s" \
-		--internalurl "http://192.168.122.102:8776/v1/\$(tenant_id)s"
+		--publicurl "http://192.168.122.101:8776/v1/\$(tenant_id)s" \
+		--adminurl "http://192.168.122.101:8776/v1/\$(tenant_id)s" \
+		--internalurl "http://192.168.122.101:8776/v1/\$(tenant_id)s"
 	+-------------+----------------------------------------------+
 	|   Property  |                    Value                     |
 	+-------------+----------------------------------------------+
-	|   adminurl  | http://192.168.122.102:8776/v1/$(tenant_id)s |
+	|   adminurl  | http://192.168.122.101:8776/v1/$(tenant_id)s |
 	|      id     |       002bdb25d74f45fe9a202f0fbbb3c97e       |
-	| internalurl | http://192.168.122.102:8776/v1/$(tenant_id)s |
-	|  publicurl  | http://192.168.122.102:8776/v1/$(tenant_id)s |
+	| internalurl | http://192.168.122.101:8776/v1/$(tenant_id)s |
+	|  publicurl  | http://192.168.122.101:8776/v1/$(tenant_id)s |
 	|    region   |                  regionOne                   |
 	|  service_id |       94ed0a651b4342e2a2c25c00c2b271d8       |
 	+-------------+----------------------------------------------+
@@ -777,20 +812,7 @@ Note: We were required to enter 'tenant_id' in the URL string as this gets autom
 
 ##**Testing Cinder**
 
-Finally, return back to your session on node2 (where Cinder is running) and ensure that you can create a volume. Note that you'll require authentication with Keystone, so the easiest thing to do is copy the 'user' rc file from your node1 machine:
-
-	node2 # scp root@node1:/root/keystonerc_user ~/
-	
-	# source keystonerc_user
-	# keystone token-get
-	+-----------+----------------------------------+
-	|  Property |              Value               |
-	+-----------+----------------------------------+
-	|  expires  |       2013-03-31T18:33:16Z       |
-	|     id    | d1a21139f5ce45d394ceaa8a1dde59f1 |
-	| tenant_id | 58a576bfd7b34df1afb372c1c905798e |
-	|  user_id  | 3b0682e2872849d780ecde00b8d20e4e |
-	+-----------+----------------------------------+
+Let's test our Cinder configuration, making sure that it can create a volume, note that you'll need to be authenticated with Keystone for this to work:
 
 	# cinder create --display-name Test 1
 	+---------------------+--------------------------------------+
@@ -820,7 +842,33 @@ Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying 
 	(Ctrl-C to quit)
 
 
-#**Lab 6: Installation and configuration of Nova (Compute Service)**
+#**Lab 7: Installation and configuration of Quantum (Networking Service)**
+
+**Prerequisites:**
+* Keystone installed and configured as per Lab 3
+* Two network interfaces attached to both OpenStack nodes, if using virtual machines ensure that eth0 is NAT'd to the rest of the world and eth1 is on a private/isolated vSwitch.
+
+##**Introduction**
+
+Quantum is OpenStack's Networking service, although it's important to realise that the name 'Quantum' will likely be replaced with just 'OpenStack Networking', apparently down to a trademark infringement. The training will continue to use the Quantum terminology for now as documentation and commands still explicitly use 'quantum'. 
+
+Quantum provides an abstract virtual networking service, enabling administrators and end-users to manage virtual networks for their instances on-top of OpenStack, i.e. Networking-as-a-Service. Quantum simply provides an API for self-service and management but relies on underlying technologies for the actual implementation via Quantum-plugins. This training makes use of Open vSwitch, but there are many other plugins available upstream such as Nicira NVP, Cisco UCS, Brocade etc. Quantum allows cloud-tenants to create rich networking topologies in an 'over-cloud' including advanced networking services, e.g. LBaaS, VPNaaS and Firewall-aaS. 
+
+Quantum replaces the initial nova-network component that provided networking to instances in OpenStack prior to Folsom, it overcomes limitations such as lack of true isolation (unless implementing VLANs) and networks being down to the cloud-provider to manage. It vastly enhances the ability to provide networking and places the control in the hands of the users. This lab will get you to implement a Quantum networking infrastructure as a pre-requisite to starting our first instances, we'll configure underlying networking devices and attach them into Open vSwitch for use within Quantum.
+
+##**Preparing the Cloud Controller**
+
+We're going to be using Open vSwitch to provide the underlying networking infrastructure, this then attaches into Quantum via a plugin so that Quantum can call out to Open vSwitch to actually implement the networks required. When I say networks, what I really mean is tenant-networks, i.e. the networks virtually created by either the administrators of the cloud or the end-users. 
+
+Open vSwitch relies on 'OVS Bridges' to attach both physical network cards and virtual machine's NICs to, not to be confused with traditional Linux bridges. It uses 'br-int' as the integration bridge, it's where all virtual network cards for the respective instances running on that machine get attached into, this bridge is then linked into a physical adaptor to provide a bridge out into the real world, enabling connectivity between machines; for example, inter-instance communication or internet access. 
+
+In addition to 'br-int' being used for virtual machine mapping, any additional agents also get linked into this bridge, e.g. for DHCP or L3 routing, anything that needs to communicate with instances needs to route through this bridge. For external access, 'br-ex' is used to define a network device to provide external access to (and from) our instances.
+
+In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
+
+	# yum install openstack-quantum -y
+
+#**Lab 8: Installation and configuration of Nova (Compute Service)**
 
 **Prerequisites:**
 * Keystone installed and configured as per Lab 3
@@ -831,18 +879,35 @@ Nova is OpenStack's compute service, it's responsible for providing and scheduli
 
 Nova is quite fragmented in its architecture, the scheduler as an example typically sits on a separate machine to the compute nodes, where only the compute and network components exist. As with other components, a message bus exists between all the components allowing the distribution to be completely open and as a result can drastically scale. 
 
-The lab will walk you through deploying Nova across the cluster, utilising our 'cloud controller' (node1) to provide the API and scheduler services and the remaining two virtual machines to provide compute resource (with associated network component). It will also show you how to manage the individual Nova services and integrate with the rest of the stack.
+The lab will walk you through deploying Nova across the cluster, utilising our 'cloud controller' (openstack-controller) to provide the API and scheduler services and the remaining two virtual machines to provide compute resource (with associated network component). It will also show you how to manage the individual Nova services and integrate with the rest of the stack.
 
 Estimated completion time: 1 hour
 
 ##**Preparing the Cloud Controller**
 
-We need to deploy the Nova components on our first node that will provide the API and the scheduler services and will be the endpoint for Nova in our environment. It's important to note that typically the Nova configuration between cloud controller nodes and compute nodes is actually almost identical, it's the Nova services that are started on a particular node that define its responsibilities. Therefore it may seem strange why we're configuring Nova 
+We need to deploy the Nova components on our first node that will provide the API and the scheduler services and will be the endpoint for Nova in our environment. It's important to note that typically the Nova configuration between cloud controller nodes and compute nodes is actually almost identical, it's the Nova services that are started on a particular node that define its responsibilities. Therefore it may seem strange why we're configuring Nova on openstack-controller!
 
-	# ssh root@node1
-	# source keystonerc_admin
+	(If you're not already connected to openstack-controller)
+	# ssh root@openstack-controller
+	# source ~/keystonerc_admin
 
+	# yum install openstack-nova -y
 	# openstack-db --init --service nova --password <password>
+	
+	# keystone user-create --name nova --pass novapasswd
+	+----------+----------------------------------+
+	| Property |              Value               |
+	+----------+----------------------------------+
+	|  email   |                                  |
+	| enabled  |               True               |
+	|    id    | 4981852a8b654e8ea52fee94fcf65dd2 |
+	|   name   |               nova               |
+	| tenantId |                                  |
+	+----------+----------------------------------+
+	
+Add this user into the correct 'services' tenant and give it the 'admin' role; you can use 'keystone tenant-list' or 'keystone role-list' to get the required id's:
+	
+	# keystone user-role-add --user nova --role admin --tenant services
 
 A few necessary changes to the Nova configuration file are required in order to establish integration with other components that we've already setup. There are over 570 configuration options within Nova at the time of writing this so it gets extremely difficult to troubleshoot using the configuration file. Many of the options are commented out but it does provide you with every option possible. For ease of deployment, below is a basic Nova configuration file which is tailored to the environment that we've been creating.
 
@@ -850,7 +915,7 @@ Firstly, move the original nova.conf file to somewhere safe so we've always got 
 
 	# mv /etc/nova/nova.conf ~/nova.conf.original
 
-Then copy the following code into /etc/nova/nova.conf:
+Then copy the following code into /etc/nova/nova.conf, make sure you 
 
 	[DEFAULT]
 	logdir = /var/log/nova
@@ -864,7 +929,7 @@ Then copy the following code into /etc/nova/nova.conf:
 	libvirt_nonblocking = True
 	libvirt_inject_partition = -1
 	iscsi_helper = tgtadm
-	sql_connection = mysql://nova:<password>@192.168.122.101/nova
+	sql_connection = mysql://nova:nova@192.168.122.101/nova
 	compute_driver = libvirt.LibvirtDriver
 	libvirt_type=qemu
 	firewall_driver = nova.virt.libvirt.firewall.IptablesFirewallDriver
@@ -879,17 +944,11 @@ Then copy the following code into /etc/nova/nova.conf:
 	qpid_port=5672
 
 	glance_host=192.168.122.101
-	
-	network_manager=nova.network.manager.FlatDHCPManager
-	public_interface=br100
-	flat_network_bridge=br100
-	flat_interface=eth0
-	multi_host=True
 
 	[keystone_authtoken]
-	admin_tenant_name = admin
-	admin_user = admin
-	admin_password = <password>
+	admin_tenant_name = services
+	admin_user = nova
+	admin_password = novapasswd
 	auth_host = 192.168.122.101
 	auth_port = 35357
 	auth_protocol = http
@@ -897,14 +956,14 @@ Then copy the following code into /etc/nova/nova.conf:
 
 What this configuration is describing is as follows-
 
-* The MySQL database (which holds the instance data) is located on node1
+* The MySQL database (which holds the instance data) is located on openstack-controller
 * We want to use Libvirt for the Compute, but qemu based emulation
-* We are using iptables to provide the firewall (and routing for networking)
-* We are using qpid as the backend messaging broker (and it sits on node1)
+* We are using iptables to provide the firewall-based security
+* We are using qpid as the backend messaging broker (and it sits on openstack-controller)
 * Cinder is the volume manager for providing persistent storage
-* Glance is providing the networking and sits on node1
-* The machine's IP address is 192.168.122.101 (node1)
-* We're using Nova's FlatDHCPManager network config (more to come later)
+* Glance is providing the images and it sits on 192.168.122.101
+* The machine's IP address is 192.168.122.101 (openstack-openstack-controller)
+* We are NOT configuring networking (yet!)
 * And we're using Keystone for authentication.
 
 Note: Remember to change the keystone admin_password entry and the MySQL password to reflect your configuration.	
@@ -919,30 +978,21 @@ That configuration should be enough for the cloud controller machine, we can the
 
 	# service openstack-nova-api start
 	# service openstack-nova-scheduler start
+	# service openstack-nova-conductor start
 
 	# chkconfig openstack-nova-api on
 	# chkconfig openstack-nova-scheduler on
+	# chkconfig openstack-nova-conductor on
+	
+Note: The conductor service is brand-new to Grizzly, it takes away the ability for the compute nodes to update the database, providing security and isolation from instances and the underlying database. The conductor can theoretically sit on any node, it simply takes data from the message bus, but it can sit on the controller node for the purpose of this lab.
 
 ##**Preparing the Compute Nodes**
 
-So far we've used two of our four virtual instances, the remaining two will be used as compute nodes which we'll install and configure Nova on. This lab repeats the previous steps of registering and subscribing systems to receive OpenStack channel content:
+So far we've used two of our four virtual instances, the remaining two will be used as compute nodes which we'll install and configure Nova on.
 
-	# virsh start node3
-	# ssh root@node3
-	
-	# subscription-manager register
-	# subscription-manager list --available
-	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
-
-	# yum install yum-utils -y
-	# yum-config-manager --enable rhel-server-ost-6-folsom-rpms --setopt="rhel-server-ost-6-folsom-rpms.priority=1"
+	# ssh root@openstack-openstack-compute1
 	# yum update -y && reboot
 
-Note: I would recommend that you configure one node at a time, so start with node3 and once we have this within the OpenStack environment we can simply copy configuration files over and start the required services.
-
-After the machine has rebooted, connect back in and install the required components:
-
-	# ssh root@node3
 	# yum install openstack-nova -y
 	# yum install python-cinderclient -y
 
@@ -951,28 +1001,25 @@ Also, as this machine will provide resource, we need to ensure that libvirt is i
 	# yum install libvirt -y
 	# chkconfig libvirtd on && service libvirtd start
 
-	# scp root@node1:/etc/nova/nova.conf /etc/nova/nova.conf
+	# scp root@openstack-openstack-controller:/etc/nova/nova.conf /etc/nova/nova.conf
 	# chown root:nova /etc/nova/nova.conf
 	# restorecon /etc/nova/nova.conf
 	# chmod 640 /etc/nova/nova.conf
 
-Remember that the nova.conf that was on node1 was slightly configured specifically for node1, we should make a few changes so that it fits with node3's configuration:
+Remember that the nova.conf that was on openstack-controller was slightly configured specifically for openstack-controller, we should make a few changes so that it fits with node3's configuration:
 
 	# sed -i 's/my_ip=.*/my_ip=192.168.122.103/g' /etc/nova/nova.conf
 
-Note: If your compute node is not at '192.168.122.103, make the required change in the above sed command, or just manually edit the /etc/nova/nova.conf file.
+Note: If your compute node is not at '192.168.122.102, make the required change in the above sed command, or just manually edit the /etc/nova/nova.conf file.
 
-We can now start the required services on this node, that'll be compute and network:
+We can now start the required services on this node, for now we only need compute...
 
 	# service openstack-nova-compute start
-	# service openstack-nova-network start
-
 	# chkconfig openstack-nova-compute on
-	# chkconfig openstack-nova-network on
 
-We're now finished with node3 for now, we need to return to our cloud controller (node1) and setup the keystone service and endpoints:
+We're now finished with openstack-compute1 for now, we need to return to our cloud controller (openstack-controller) and setup the keystone service and endpoints:
 
-	# ssh root@node1
+	# ssh root@openstack-openstack-controller
 	# source keystonerc_admin
 
 	# keystone service-create --name nova --type compute --description "Nova Compute Service"
@@ -1003,12 +1050,12 @@ We're now finished with node3 for now, we need to return to our cloud controller
 Next, let's make sure that our integration into other components is working correctly. We can use 'nova-manage' to provide us with statistics and monitoring for Nova:
 
 	# nova-manage service list
-	Binary           Host         Zone      Status     State   Updated_At
-	nova-scheduler   node1        nova      enabled    :-)     2013-03-31 10:47:20
-	nova-network     node3        nova      enabled    :-)     2013-03-31 10:47:20
-	nova-compute     node3        nova      enabled    :-)     2013-03-31 10:47:21
+	Binary           Host                   Zone             Status     State Updated_At
+	nova-scheduler   openstack-openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
+	nova-compute     openstack-openstack-compute1        nova             enabled    :-)   2013-06-09 00:13:10
+	nova-conductor   openstack-openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
 
-We can see that nova-scheduler is running on node1 (where nova-api also runs) and nova-network and nova-compute are running on node3. This is all shared via AMQP/qpid. To test integration with Glance, for example:
+We can see that nova-scheduler and nova-conductor is running on openstack-openstack-controller (where nova-api also runs, but isn't shown here) and nova-compute is running on openstack-openstack-compute1. This is all shared via AMQP/qpid. To test integration with Glance, for example:
 
 	# nova image-list
 	+--------------------------------------+------------------------------+--------+--------+
@@ -1048,28 +1095,6 @@ We could of course, test Cinder integration but there's currently no volumes spe
 
 Warning: If you've rebooted your Cinder node, it's likely that the above will fail. The mechanism we used for creating the volume-group is a temporary workaround. Please re-visit the lab to re-setup the volume group and restart the cinder services and re-attempt the above.
 
-Let's next ensure that the fourth node can join the compute cluster. Repeat the steps undertaken for node3 on node4, when you've copied the Nova configuration file over, make sure you set the IP address accordingly:
-
-	# sed -i 's/my_ip=.*/my_ip=192.168.122.104/g' /etc/nova/nova.conf
-
-You can now start the services on node4:
-
-	# service openstack-nova-compute start
-	# service openstack-nova-api start
-
-	# chkconfig openstack-nova-compute on
-	# chkconfig openstack-nova-api on
-
-Let's make sure that they've joined the cluster successfully, note you may have to wait 30 seconds for them to appear:
-
-	# nova-manage service list
-	Binary           Host    Zone      Status     State   Updated_At
-	nova-scheduler   node1   nova      enabled    :-)     2013-03-31 11:26:05
-	nova-network     node3   nova      enabled    :-)     2013-03-31 11:26:06
-	nova-compute     node3   nova      enabled    :-)     2013-03-31 11:26:06
-	nova-compute     node4   nova      enabled    :-)     2013-03-31 11:25:58
-	nova-network     node4   nova      enabled    :-)     2013-03-31 11:26:02
-
 Note: One of the most common problems with services being visible but not in a 'happy' state is time inconsistencies. If you're experiencing issues please confirm the date/time first!
 
 If you watch the nova logs on one of the compute nodes, you'll see the nodes checking in and updating their available resource for the scheduler...
@@ -1103,7 +1128,7 @@ Estimated completion time: 20 minutes.
 
 As with all OpenStack components, their location within the cloud is largely irrelevant. However, for convenience we'll install Horizon on our cloud controller node. Note that Horizon is known as 'openstack-dashboard':
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 	# yum install openstack-dashboard -y
@@ -1148,7 +1173,7 @@ A diagram explaining the above can be found [here](http://docs.openstack.org/tru
 
 We've already created this network in the previous lab and therefore there's nothing more that we need to do. To confirm it's running:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 	# nova-manage network list
@@ -1170,7 +1195,7 @@ This lab will go through the following:
 
 Let's launch our first instance in OpenStack using the command line. Firstly we need to find out a few things, the flavor size and the image we want to start, plus we have to give it a name:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 	# nova flavor-list
@@ -1255,12 +1280,12 @@ Via the OpenStack Dashboard (Horizon) as well as via the command-line tools we c
 
 Connections come into the novncproxy service only, it then creates a tunnel through to the VNC server, meaning VNC servers need not be open to everyone, purely the proxy service. Whilst it can be installed anywhere, we should install the proxy service on our cloud controller node:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 	# yum install openstack-nova-novncproxy -y
 
-Then, set the configuration for novncproxy up; on the cloud controller (node1):
+Then, set the configuration for novncproxy up; on the cloud controller (openstack-controller):
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
@@ -1291,7 +1316,7 @@ Finally, changes to the iptables rules on our compute nodes need to be made for 
 
 	# lokkit -p 5900-5999:tcp
 
-On the cloud controller we need to start and enable two services for VNC to work properly, the first is the novncproxy service itself and the second is the consoleauth service which is responsible for token-based authentication:
+On the cloud controller we need to start and enable two services for VNC to work properly, the first is the novncproxy service itself and the second is the console service which is responsible for token-based authentication:
 
 	# service openstack-nova-novncproxy start
 	# service openstack-nova-consoleauth start
@@ -1306,7 +1331,7 @@ Finally, restart the compute services on the two compute-nodes:
 
 VNC consoles are only available to instances created when 'vnc_enabled = True' is configured in /etc/nova/nova.conf, therefore we have to create a new instance to verify it's working correctly:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_user
 
 	# nova image-list
@@ -1374,7 +1399,7 @@ The "public_interface" allows additional IP addresses to be dynamically assigned
 
 First, let's look at defining the addresses and assigning them manually. For this task you'll need an instance running first, if you don't have one running revisit the previous lab and start an instance:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 It's possible to create an entire range of IP addresses, but as we're only using a single interface we'll define a subset of addresses:
@@ -1513,7 +1538,7 @@ Just remember to make these changes (and service restarts) on all compute nodes 
 
 Before proceeding, return clean up the manual allocation of the '192.168.122.201' address:
 
-	# ssh root@node1
+	# ssh root@openstack-controller
 	# source keystonerc_user
 
 	# nova-manage floating delete 192.168.122.201
