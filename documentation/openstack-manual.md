@@ -866,7 +866,252 @@ In addition to 'br-int' being used for virtual machine mapping, any additional a
 
 In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
+	# ssh root@openstack-controller
 	# yum install openstack-quantum -y
+	
+Add the integration bridge:
+
+	# ovs-vsctl add-br br-int
+
+Add the bridge that maps OVS to the real world, note that we're using 'eth1' here as this network will only be used for inter-instance traffic...
+
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1
+	DEVICE=eth1
+	BOOTPROTO=static
+	NM_CONTROLLED=no
+	ONBOOT=yes
+	TYPE=Ethernet
+	EOF
+	
+	# ifup eth1
+	# ovs-vsctl add-br br-eth1
+	# ovs-vsctl add-port br-eth1 eth1
+	# ovs-vsctl show
+	54042c1d-3fd5-4ddd-a70c-170b0ac7bf8e
+    Bridge "br-eth1"
+        Port "eth1"
+            Interface "eth1"
+        Port "br-eth1"
+            Interface "br-eth1"
+                type: internal
+    Bridge br-int
+        Port br-int
+            Interface br-int
+                type: internal
+    ovs_version: "1.9.0"
+    
+Next, we need to create an external network bridge. This is a little bit tricky as we're only providing two network interfaces to our machines, for this to come up on-boot and not break our SSH connectivity we need to make this 'device' persistent:
+
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-br-ex
+	DEVICE=br-ex
+	BOOTPROTO=static
+	ONBOOT=yes
+	IPADDR=192.168.122.101
+	NETMASK=255.255.255.0
+	GATEWAY=192.168.122.1
+	EOF
+	
+We can therefore unconfigure our eth0 device, as we'll be attaching this to the OVS bridge we create shortly:
+
+	# cp /etc/sysconfig/network-scripts/ifcfg-eth0 /root/ifcfg-eth0-backup
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth0
+	DEVICE=eth0
+	TYPE=Ethernet
+	ONBOOT="yes"
+	NM_CONTROLLED=no
+	BOOTPROTO=static
+	EOF
+	
+Restart the network so that the bridge comes up as expected:
+	
+	# service network restart
+	Shutting down interface eth0:                              [  OK  ]
+	Shutting down interface eth1:                              [  OK  ]
+	Shutting down loopback interface:                          [  OK  ]
+	Bringing up loopback interface:                            [  OK  ]
+	Bringing up interface br-ex:                               [  OK  ]
+	Bringing up interface eth0:                                [  OK  ]
+	Bringing up interface eth1:                                [  OK  ]
+	
+Finally, create the 'br-ex' external bridge and attach our eth0 device into it:
+
+	# ovs-vsctl add-br br-ex
+	# ovs-vsctl add-port br-ex eth0
+	
+To confirm that everything is as expected, you can check the output of 'ovs-vsctl show':
+
+	# ovs-vsctl show
+	54042c1d-3fd5-4ddd-a70c-170b0ac7bf8e
+    Bridge "br-eth1"
+        Port "eth1"
+            Interface "eth1"
+        Port "br-eth1"
+            Interface "br-eth1"
+                type: internal
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port "eth0"
+            Interface "eth0"
+    Bridge br-int
+        Port br-int
+            Interface br-int
+                type: internal
+    ovs_version: "1.9.0"
+
+Next we need to configure Quantum itself, there are a number of configuration files we need to setup:
+
+	# quantum-server-setup
+	(Use openvswitch)
+	
+Let Quantum know that we're using Open vSwitch as our plugin and that we want to be able to use overlapping IPs, i.e. multiple tenants can have the same subnet ranges:
+
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT core_plugin quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPluginV2
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT ovs_use_veth True
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT allow_overlapping_ips True
+	
+Quantum uses qpid for communication between the server and the agents, we already have one configured:
+
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT rpc_backend quantum.openstack.common.rpc.impl_qpid
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT qpid_hostname 192.168.122.101
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT qpid_port 5672
+	# openstack-config --set /etc/quantum/quantum.conf AGENT root_helper sudo quantum-rootwrap /etc/quantum/rootwrap.conf
+	
+We'll set Keystone up later on, but we need to make entries into quantum.conf to represent these:
+
+	# openstack-config --set /etc/quantum/quantum.conf DEFAULT auth_strategy keystone
+	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken auth_host 192.168.122.101
+	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_tenant_name services
+	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_user quantum
+	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_password quantumpasswd
+	
+Next, configure the plugin itself. If the symlink wasn't created for you, you'll need to set it up:
+
+	# ll /etc/quantum/plugin.ini
+	lrwxrwxrwx 1 root root 55 Jun 12 17:22 plugin.ini -> /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
+	
+If it doesn't exist:
+
+	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
+	
+Then, make the necessary modifications, first set the database:
+
+	# openstack-config --set /etc/quantum/plugin.ini DATABASE sql_connection mysql://quantum:quantum@192.168.122.101/ovs_quantum
+	
+Next, configure OVS to use VLAN's to isolate the tenant networks from each other. Note that we're using VLANs here because RHEL currently doesn't support network tunnelling, e.g. GRE/VXLAN. We also configure a set of VLAN tag ranges and crucially MAP our br-eth1 device which we created previously to a 'physnet' network provider.
+
+	# openstack-config --set /etc/quantum/plugin.ini OVS tenant_network_type vlan
+	# openstack-config --set /etc/quantum/plugin.ini OVS network_vlan_ranges physnet1:1000:2999
+	# openstack-config --set /etc/quantum/plugin.ini OVS bridge_mappings physnet1:br-eth1
+	
+Ensure that the Firewall options are configured correctly, i.e. to use iptables to provide security for our instances:
+
+	# openstack-config --set /etc/quantum/plugin.ini SECURITYGROUP firewall_driver quantum.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+	
+I mentioned previously that we configure Quantum to provide a number of additional agents to provide functionality such as DHCP and L3-routing to external networks, these need to be configured also.
+
+We configure the DHCP agent to use OVS:
+
+	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
+	
+To handle all routers, regardless of whether they have/require external connectivity:
+
+	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT handle_internal_only_routers True
+	
+Configure the external bridge network:
+
+	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT external_network_bridge br-ex
+	
+Configure the agent to allow for namespaces, i.e. to use overlapping IPs:
+
+	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT use_namespaces True
+	
+As this configuration file is identical to the L3 one, we can simply copy them:
+
+	# cp /etc/quantum/dhcp_agent.ini /etc/quantum/l3_agent.ini
+	(y)
+	
+Configure Keystone to provide authentication and an endpoint for Quantum:
+
+	# source keystonerc_admin
+	# keystone user-create --name quantum --pass quantumpasswd
+	# keystone user-role-add --user quantum --role admin --tenant services
+	
+	# keystone service-create --name quantum --type network --description "Quantum Network Service" 
+	+-------------+----------------------------------+
+	| description |      Quantum Network Service     |
+	|      id     | c12b2784b0734cdd8fafd8c8654deb1d |
+	|     name    |             quantum              |
+	|     type    |             network              |
+	+-------------+----------------------------------+
+	
+	# keystone endpoint-create --service_id c12b2784b0734cdd8fafd8c8654deb1d \
+		--publicurl "http://192.168.122.101:9696" \
+		--adminurl "http://192.168.122.101:9696" \
+		--internalurl "http://192.168.122.101:9696"
+	+-------------+----------------------------------+
+	|   Property  |              Value               |
+	+-------------+----------------------------------+
+	|   adminurl  |   http://192.168.122.101:9696    |
+	|      id     | 714743a317c04252b872c3ba7a7eda58 |
+	| internalurl |   http://192.168.122.101:9696    |
+	|  publicurl  |   http://192.168.122.101:9696    |
+	|    region   |            regionOne             |
+	|  service_id | c12b2784b0734cdd8fafd8c8654deb1d |
+	+-------------+----------------------------------+
+	
+Start the services and configure them to come up on boot:
+
+	# service quantum-server start && chkconfig quantum-server on
+	# service quantum-l3-agent start && chkconfig quantum-l3-agent on
+	# service quantum-dhcp-agent start && chkconfig quantum-dhcp-agent on
+	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
+	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
+	
+##**Preparing our Compute Node**
+
+Thankfully, the configuration for the compute node is a lot simpler! We can copy the configuration files from the controller:
+
+	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
+	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
+	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
+	
+Create the bridges like we did before, although this time we don't have to worry about eth0 as we're not configuring an external bridge... the l3-agent on the controller node does the routing for us, we just need to give our br-int access to eth1:
+
+	# yum install openstack-quantum -y
+	
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1
+	DEVICE=eth1
+	BOOTPROTO=static
+	NM_CONTROLLED=no
+	ONBOOT=yes
+	TYPE=Ethernet
+	EOF
+	
+	# ifup eth1
+	# ovs-vsctl add-br br-int
+	# ovs-vsctl add-br br-eth1
+	# ovs-vsctl add-port br-eth1 eth1
+	
+	# ovs-vsctl show
+	cf94f69d-737d-441f-b803-d3615de877da
+    Bridge "br-eth1"
+        Port "br-eth1"
+            Interface "br-eth1"
+                type: internal
+        Port "eth1"
+            Interface "eth1"
+    Bridge br-int
+        Port br-int
+            Interface br-int
+                type: internal
+    ovs_version: "1.9.0"
+	
+Make sure the correct services are started and enabled:
+
+	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
+	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
 
 #**Lab 8: Installation and configuration of Nova (Compute Service)**
 
@@ -915,7 +1160,7 @@ Firstly, move the original nova.conf file to somewhere safe so we've always got 
 
 	# mv /etc/nova/nova.conf ~/nova.conf.original
 
-Then copy the following code into /etc/nova/nova.conf, make sure you 
+Then copy the following code into /etc/nova/nova.conf:
 
 	[DEFAULT]
 	logdir = /var/log/nova
@@ -928,15 +1173,16 @@ Then copy the following code into /etc/nova/nova.conf, make sure you
 	injected_network_template = /usr/share/nova/interfaces.template
 	libvirt_nonblocking = True
 	libvirt_inject_partition = -1
+	libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtHybridOVSBridgeDriver
 	iscsi_helper = tgtadm
 	sql_connection = mysql://nova:nova@192.168.122.101/nova
 	compute_driver = libvirt.LibvirtDriver
 	libvirt_type=qemu
-	firewall_driver = nova.virt.libvirt.firewall.IptablesFirewallDriver
 	rpc_backend = nova.openstack.common.rpc.impl_qpid
 	rootwrap_config = /etc/nova/rootwrap.conf
 	auth_strategy = keystone
-	
+	firewall_driver=nova.virt.firewall.NoopFirewallDriver
+
 	volume_api_class = nova.volume.cinder.API
 	enabled_apis = ec2,osapi_compute,metadata
 	my_ip=192.168.122.101
@@ -944,6 +1190,14 @@ Then copy the following code into /etc/nova/nova.conf, make sure you
 	qpid_port=5672
 
 	glance_host=192.168.122.101
+	network_api_class = nova.network.quantumv2.api.API
+	quantum_admin_username = quantum
+	quantum_admin_password = quantumpasswd
+	quantum_admin_auth_url = http://192.168.122.101:35357/v2.0/
+	quantum_auth_strategy = keystone
+	quantum_admin_tenant_name = services
+	quantum_url = http://192.168.122.101:9696/
+	security_group_api = quantum
 
 	[keystone_authtoken]
 	admin_tenant_name = services
@@ -957,13 +1211,13 @@ Then copy the following code into /etc/nova/nova.conf, make sure you
 What this configuration is describing is as follows-
 
 * The MySQL database (which holds the instance data) is located on openstack-controller
-* We want to use Libvirt for the Compute, but qemu based emulation
-* We are using iptables to provide the firewall-based security
+* We want to use Libvirt for the Compute, but qemu based emulation (In physical you would use 'kvm' here)
+* We are not using nova-based firewalling, this is taken care of by Quantum
 * We are using qpid as the backend messaging broker (and it sits on openstack-controller)
 * Cinder is the volume manager for providing persistent storage
 * Glance is providing the images and it sits on 192.168.122.101
-* The machine's IP address is 192.168.122.101 (openstack-openstack-controller)
-* We are NOT configuring networking (yet!)
+* The machine's IP address is 192.168.122.101 (openstack-controller)
+* We are using Quantum to provide network access
 * And we're using Keystone for authentication.
 
 Note: Remember to change the keystone admin_password entry and the MySQL password to reflect your configuration.	
@@ -988,10 +1242,9 @@ Note: The conductor service is brand-new to Grizzly, it takes away the ability f
 
 ##**Preparing the Compute Nodes**
 
-So far we've used two of our four virtual instances, the remaining two will be used as compute nodes which we'll install and configure Nova on.
+We configure Nova on the compute node but literally only to provide compute resources to the pool:
 
-	# ssh root@openstack-openstack-compute1
-	# yum update -y && reboot
+	# ssh root@openstack-compute1
 
 	# yum install openstack-nova -y
 	# yum install python-cinderclient -y
@@ -1001,14 +1254,14 @@ Also, as this machine will provide resource, we need to ensure that libvirt is i
 	# yum install libvirt -y
 	# chkconfig libvirtd on && service libvirtd start
 
-	# scp root@openstack-openstack-controller:/etc/nova/nova.conf /etc/nova/nova.conf
+	# scp root@openstack-controller:/etc/nova/nova.conf /etc/nova/nova.conf
 	# chown root:nova /etc/nova/nova.conf
 	# restorecon /etc/nova/nova.conf
 	# chmod 640 /etc/nova/nova.conf
 
 Remember that the nova.conf that was on openstack-controller was slightly configured specifically for openstack-controller, we should make a few changes so that it fits with node3's configuration:
 
-	# sed -i 's/my_ip=.*/my_ip=192.168.122.103/g' /etc/nova/nova.conf
+	# sed -i 's/my_ip=.*/my_ip=192.168.122.102/g' /etc/nova/nova.conf
 
 Note: If your compute node is not at '192.168.122.102, make the required change in the above sed command, or just manually edit the /etc/nova/nova.conf file.
 
@@ -1019,7 +1272,7 @@ We can now start the required services on this node, for now we only need comput
 
 We're now finished with openstack-compute1 for now, we need to return to our cloud controller (openstack-controller) and setup the keystone service and endpoints:
 
-	# ssh root@openstack-openstack-controller
+	# ssh root@openstack-controller
 	# source keystonerc_admin
 
 	# keystone service-create --name nova --type compute --description "Nova Compute Service"
@@ -1050,10 +1303,10 @@ We're now finished with openstack-compute1 for now, we need to return to our clo
 Next, let's make sure that our integration into other components is working correctly. We can use 'nova-manage' to provide us with statistics and monitoring for Nova:
 
 	# nova-manage service list
-	Binary           Host                   Zone             Status     State Updated_At
-	nova-scheduler   openstack-openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
-	nova-compute     openstack-openstack-compute1        nova             enabled    :-)   2013-06-09 00:13:10
-	nova-conductor   openstack-openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
+	Binary           Host                        Zone             Status     State Updated_At
+	nova-scheduler   openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
+	nova-compute     openstack-compute1        	 nova             enabled    :-)   2013-06-09 00:13:10
+	nova-conductor   openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
 
 We can see that nova-scheduler and nova-conductor is running on openstack-openstack-controller (where nova-api also runs, but isn't shown here) and nova-compute is running on openstack-openstack-compute1. This is all shared via AMQP/qpid. To test integration with Glance, for example:
 
@@ -1100,18 +1353,81 @@ Note: One of the most common problems with services being visible but not in a '
 If you watch the nova logs on one of the compute nodes, you'll see the nodes checking in and updating their available resource for the scheduler...
 
 	# tail -n5 /var/log/nova/compute.log 
-	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free ram (MB): 460
-	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free disk (GB): 27
-	2013-03-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free VCPUS: 1
-	2013-03-31 13:06:10 1836 INFO nova.compute.resource_tracker [-] Compute_service record updated for node4 
-	2013-03-31 13:06:10 1836 INFO nova.compute.manager [-] Updating host status
+	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free ram (MB): 1460
+	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free disk (GB): 27
+	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free VCPUS: 2
+	2013-06-31 13:06:10 1836 INFO nova.compute.resource_tracker [-] Compute_service record updated for openstack-compute1 
+	2013-06-31 13:06:10 1836 INFO nova.compute.manager [-] Updating host status
 
-Finally, we need to create a logical network for our instances. This is a private network that is used for internal communication between instances and their underlying services. Connecting to instances will not be possible from outside of this network at this time, but this is an essential step. The networking provided by iptables will ensure that network traffic connecting in via this private network gets automatically routed to the correct nodes.
+Finally, we need to configure our networks. We first create an external network which is owned by the 'services' tenant, this is the network that will be used to provide external connectivity to our instances. It's prudent to create this via the command-line:
 
-	# nova-manage network create private 10.0.0.0/24 --multi_host=T
+First, get the tenant-id for the 'services' tenant:
 
+	# source /root/keystonerc_admin
+	# keystone tenant-list | grep services | awk '{print $2;}'
+	aec5e4f4e53144fb828c22e77b1e620a
+	
+Then create the network with Quantum:
 
-#**Lab 7: Installation and configuration of Horizon (Frontend)**
+	# quantum net-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext --router:external=True
+	Created a new network:
+	+---------------------------+--------------------------------------+
+	| Field                     | Value                                |
+	+---------------------------+--------------------------------------+
+	| admin_state_up            | True                                 |
+	| id                        | 7382ead9-faba-405a-a78f-404c236c9334 |
+	| name                      | ext                                  |
+	| provider:network_type     | vlan                                 |
+	| provider:physical_network | physnet1                             |
+	| provider:segmentation_id  | 1000                                 |
+	| router:external           | True                                 |
+	| shared                    | False                                |
+	| status                    | ACTIVE                               |
+	| subnets                   |                                      |
+	| tenant_id                 | aec5e4f4e53144fb828c22e77b1e620a     |
+	+---------------------------+--------------------------------------+
+	
+Note: The provider details have been placed in there for us, it knows we're using VLANs to isolate our tenant networks and it knows the physical network (physnet1) is mapped to eth1.
+
+Next, create a subnet for this network, note that this corresponds to our libvirt network (192.168.122.0/24), note that if you're not using these network ranges/gateway, change as appropriate:
+
+	# quantum subnet-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext 192.168.122.0/24 --enable_dhcp=False --allocation-pool start=192.168.122.10,end=192.168.122.200 --gateway-ip 192.168.122.1
+	Created a new subnet:
+	+------------------+-------------------------------------------------------+
+	| Field            | Value                                                 |
+	+------------------+-------------------------------------------------------+
+	| allocation_pools | {"start": "192.168.122.10", "end": "192.168.122.99"} |
+	| cidr             | 192.168.122.0/24                                      |
+	| dns_nameservers  |                                                       |
+	| enable_dhcp      | False                                                 |
+	| gateway_ip       | 192.168.122.1                                         |
+	| host_routes      |                                                       |
+	| id               | 0b1ce2ce-2908-45db-8b9b-d7cbdefcfc5c                  |
+	| ip_version       | 4                                                     |
+	| name             |                                                       |
+	| network_id       | 7382ead9-faba-405a-a78f-404c236c9334                  |
+	| tenant_id        | aec5e4f4e53144fb828c22e77b1e620a                      |
+	+------------------+-------------------------------------------------------+
+	
+The allocation pool above is what we will eventually use as both our router range *AND* our floating-ip range (for external access), hence why I advise you start it at 10 and end at 99 so you're not over-riding IP's already in use.
+
+Networks can be verified like so:
+
+	# quantum net-list
+	+--------------------------------------+------+-------------------------------------------------------+
+	| id                                   | name | subnets                                               |
+	+--------------------------------------+------+-------------------------------------------------------+
+	| 7382ead9-faba-405a-a78f-404c236c9334 | ext  | 89ee4bc1-073e-4ccd-a108-6c839dad011d 192.168.122.0/24 |
+	+--------------------------------------+------+-------------------------------------------------------+
+	
+	# quantum subnet-list
+	+--------------------------------------+------+------------------+-------------------------------------------------------+
+	| id                                   | name | cidr             | allocation_pools                                      |
+	+--------------------------------------+------+------------------+-------------------------------------------------------+
+	| 89ee4bc1-073e-4ccd-a108-6c839dad011d |      | 192.168.122.0/24 | {"start": "192.168.122.10", "end": "192.168.122.99"}  |
+	+--------------------------------------+------+------------------+-------------------------------------------------------+
+	
+#**Lab 9: Installation and configuration of Horizon (Frontend)**
 
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
@@ -1137,50 +1453,112 @@ By default, SELinux will be enabled, we need to make sure that httpd can connect
 
 	# setsebool -P httpd_can_network_connect on
 
-In addition, usually Horizon (and Swift, which will be covered later) use a role called "Member", we should create this before we continue:
-
-	# keystone role-create --name Member
-	+----------+----------------------------------+
-	| Property |              Value               |
-	+----------+----------------------------------+
-	|    id    | dc414ecbff6e49e79003146a83f092c5 |
-	|   name   |              Member              |
-	+----------+----------------------------------+
-
 We can then start the service (the dashboard exists as a configuration plugin to Apache):
 
 	# service httpd start
 	# chkconfig httpd on
 
-You can then navigate to http://192.168.122.101/dashboard - you can use your user account to login as well as the admin one to see the differences.
+You can then navigate to http://192.168.122.101/dashboard (or http://openstack-controller/dashboard if you have updated your hosts file)- you can use your user account to login as well as the admin one to see the differences.
 
 Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, although in future production deployments it would be prudent to use SSL for communications and configure the systems accordingly. 
 
-#**Lab 8: Deployment of Instances**
+#**Lab 10: Deployment of Instances**
 
 **Prerequisites:**
-* All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
+* All of the previous labs completed, i.e. Keystone, Cinder, Nova, Quantum and Glance installed
 
 ##**Background Information**
 
-We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) quantum, what we've configured so far is nova-network as it's easy to configure. 
+We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) Quantum, what we've configured so far is Quantum as it's replacing nova-network as of Grizzly, although it's still possible to use it. 
 
-The Nova configuration file specifies multiple interfaces, a "public_interface" and a "flat_interface", the public one is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. The flat interface is one in which that is considered private, i.e. has no public connectivity and is primarily used for virtual machine interconnects and private networking. OpenStack relies on a private network for bridging public traffic and routing, therefore it's essential that we configure the private network. 
+For an instance to start, it must be assigned a network to attach to. These are typically private networks, i.e. have no public connectivity and is primarily used for virtual machine interconnects and private networking. Within OpenStack we bridge the private network out to the real world via a public (or 'external') network, it is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. Instances don't actually have direct access to the public network interface, they only see the private network and the administrator is responsible for optionally connecting a virtual router to interlink the two networks for both external access and inbound access from outside the private network.
 
-In our test-bed environment, each VM has just a single network interface, therefore both the public and flat networks are provided by the same interface. The difference is that because we're using a bridge (and a SINGLE interface) to link our VM network to the physical world, our "public_interface" needs to be configured as the bridge to avoid ICMP redirections. In addition to these two parameters, we need a bridge interface which links the VM network to the flat interface, in this case we've called it br100 ("flat_network_bridge"). 
-
-A diagram explaining the above can be found [here](http://docs.openstack.org/trunk/openstack-compute/admin/content/figures/7/figures/flatdchp-net.jpg)
-
-We've already created this network in the previous lab and therefore there's nothing more that we need to do. To confirm it's running:
+We've already created our external network and ensured that Open vSwitch knows which interface to bridge external traffic to, it can be confirmed by using:
 
 	# ssh root@openstack-controller
 	# source keystonerc_admin
 
-	# nova-manage network list
-	id IPv4           IPv6     start address  DNS1         	DNS2      VlanID    project   uuid           
-	1  10.0.0.0/24    None     10.0.0.2       8.8.4.4      	None      None      None      325550e3-711b-4e41-b43c-1750b4cf85c5
+	# quantum net-show ext
+	+---------------------------+--------------------------------------+
+	| Field                     | Value                                |
+	+---------------------------+--------------------------------------+
+	| admin_state_up            | True                                 |
+	| id                        | 7382ead9-faba-405a-a78f-404c236c9334 |
+	| name                      | ext                                  |
+	| provider:network_type     | vlan                                 |
+	| provider:physical_network | physnet1                             |
+	| provider:segmentation_id  | 1000                                 |
+	| router:external           | True                                 |
+	| shared                    | False                                |
+	| status                    | ACTIVE                               |
+	| subnets                   | 89ee4bc1-073e-4ccd-a108-6c839dad011d |
+	| tenant_id                 | aec5e4f4e53144fb828c22e77b1e620a     |
+	+---------------------------+--------------------------------------+
+	
+The key parameter above is that 'router:external=True'.
 
-Every instance that starts will automatically get a private IP address within that network, 10.0.0.0/24, and is assigned via DHCP by dnsmasq running on each of our configured compute-nodes. There are other options for nova-network, FlatDHCPManager and FlatManager, the only difference between the two is that FlatManager relies on external DHCP and DNS to be relayed onto the instances, but both rely on the network bridge created by nova-network. There's one additional network-type, VlanManager, which solves a few problems that FlatManager/FlatDHCPManager have; e.g. tenant isolation, with these networks, all virtual machines sit within the same network range, VlanManager extends this further by providing a separate VLAN-tagged network for each tenant/project.
+This is great, but instances won't have direct access to this network, we need to create private networks for our tenants. This is the responsibility of a user within a tenant, the external network is just exposed to all of the tenants that are created; whilst they cannot modify it, they can attach a virtual router to it for connectivity.
+
+The next step is for us to create a tenant network, whilst we can create them within the 'admin' tenant, let's use our 'demo' tenant previously created-
+
+	# source keystonerc_user
+	# quantum net-create int
+	Created a new network:
+	+-----------------+--------------------------------------+
+	| Field           | Value                                |
+	+-----------------+--------------------------------------+
+	| admin_state_up  | True                                 |
+	| id              | 0191c293-365d-4798-aa2d-f5afe47100c2 |
+	| name            | int                                  |
+	| router:external | False                                |
+	| shared          | False                                |
+	| status          | ACTIVE                               |
+	| subnets         |                                      |
+	| tenant_id       | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	+-----------------+--------------------------------------+
+	
+	# quantum subnet-create int 30.0.0.0/24 --dns_nameservers list=true 192.168.122.1
+	Created a new subnet:
+	+------------------+--------------------------------------------+
+	| Field            | Value                                      |
+	+------------------+--------------------------------------------+
+	| allocation_pools | {"start": "30.0.0.2", "end": "30.0.0.254"} |
+	| cidr             | 30.0.0.0/24                                |
+	| dns_nameservers  | 192.168.122.1                              |
+	| enable_dhcp      | True                                       |
+	| gateway_ip       | 30.0.0.1                                   |
+	| host_routes      |                                            |
+	| id               | df839eb2-8efc-413d-a19a-3e008da4858f       |
+	| ip_version       | 4                                          |
+	| name             |                                            |
+	| network_id       | 0191c293-365d-4798-aa2d-f5afe47100c2       |
+	| tenant_id        | 97b43bd18e7c4f7ebc45b39b090e9265           |
+	+------------------+--------------------------------------------+
+	
+Note that we've forwarded our network to push DNS requests out to our underlying hypervisor, although we don't YET have connectivity to this network as there's no virtual router linking the two together, let's change that...
+
+	# quantum router-create router1
+	Created a new router:
+	+-----------------------+--------------------------------------+
+	| Field                 | Value                                |
+	+-----------------------+--------------------------------------+
+	| admin_state_up        | True                                 |
+	| external_gateway_info |                                      |
+	| id                    | 992bfd5f-25ab-474b-b959-be2610333a4e |
+	| name                  | router1                              |
+	| status                | ACTIVE                               |
+	| tenant_id             | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	+-----------------------+--------------------------------------+
+	
+Now let's connect the two networks together, firstly we need to set the gateway, i.e. the external network and then add an interface which is the subnet we're linking to (our internal network 30.0.0.0/24).
+
+	# quantum router-gateway-set router1 ext
+	Set gateway for router router1
+	
+	# quantum router-interface-add router1 0191c293-365d-4798-aa2d-f5afe47100c2
+	Added interface to router router1
+
+Every instance that starts will need to be assigned a private network to attach to, in our example it will be on 30.0.0.0/24, the network address is assigned via DHCP by dnsmasq (via quantum-dhcp-agent) running on our cloud controller. Note that all of the above is simplified by the OpenStack dashboard, which you'll see shortly.
 
 The second element to be aware of is images; Glance provides the repository of disk images, when the Nova scheduler instructs a compute-node to start an instance it retrieves the required disk image and stores it locally on the hypervisor, it then uses this image as a backing store for any number of instances' disk images; i.e. for each instance started, a delta/qcow2 is instantiated which only tracks the differences, the underlying disk image is untouched.
 
@@ -1196,7 +1574,7 @@ This lab will go through the following:
 Let's launch our first instance in OpenStack using the command line. Firstly we need to find out a few things, the flavor size and the image we want to start, plus we have to give it a name:
 
 	# ssh root@openstack-controller
-	# source keystonerc_admin
+	# source keystonerc_user
 
 	# nova flavor-list
 	+----+-----------+-----------+------+-----------+------+-------+-------------+-----------+-------------+
@@ -1213,50 +1591,50 @@ Let's launch our first instance in OpenStack using the command line. Firstly we 
 	+--------------------------------------+------------------------------+--------+--------+
 	| ID                                   | Name                         | Status | Server |
 	+--------------------------------------+------------------------------+--------+--------+
-	| af094839-814e-4b76-99c4-9470a8b91903 | Red Hat Enterprise Linux 6.4 | ACTIVE |        |
+	| 3dd6cab6-e0da-4cce-887e-520ddd879e07 | Red Hat Enterprise Linux 6.4 | ACTIVE |        |
 	+--------------------------------------+------------------------------+--------+--------+
 
-	# nova boot --flavor 1 --image af094839-814e-4b76-99c4-9470a8b91903 RHEL-Test
-	+-------------------------------------+--------------------------------------+
-	| Property                            | Value                                |
-	+-------------------------------------+--------------------------------------+
-	| OS-DCF:diskConfig                   | MANUAL                               |
-	| OS-EXT-SRV-ATTR:host                | None                                 |
-	| OS-EXT-SRV-ATTR:hypervisor_hostname | None                                 |
-	| OS-EXT-SRV-ATTR:instance_name       | instance-0000000f                    |
-	| OS-EXT-STS:power_state              | 0                                    |
-	| OS-EXT-STS:task_state               | scheduling                           |
-	| OS-EXT-STS:vm_state                 | building                             |
-	| accessIPv4                          |                                      |
-	| accessIPv6                          |                                      |
-	| adminPass                           | YbPu2VVe2DQa                         |
-	| config_drive                        |                                      |
-	| created                             | 2013-03-31T19:23:08Z                 |
-	| flavor                              | m1.tiny                              |
-	| hostId                              |                                      |
-	| id                                  | 052413c7-7a9f-48d6-afac-7b13bc64c017 |
-	| image                               | Red Hat Enterprise Linux 6.4         |
-	| key_name                            | None                                 |
-	| metadata                            | {}                                   |
-	| name                                | RHEL-Test                            |
-	| progress                            | 0                                    |
-	| security_groups                     | [{u'name': u'default'}]              |
-	| status                              | BUILD                                |
-	| tenant_id                           | 4ab1c31fcd2741afa551b5f76146abf6     |
-	| updated                             | 2013-03-31T19:23:08Z                 |
-	| user_id                             | 679cae35033f4bbc9a18aff0c15b7a99     |
-	+-------------------------------------+--------------------------------------+
+	# nova boot --flavor 1 --image 3dd6cab6-e0da-4cce-887e-520ddd879e07 rhel-test
+	+-----------------------------+--------------------------------------+
+	| Property                    | Value                                |
+	+-----------------------------+--------------------------------------+
+	| status                      | BUILD                                |
+	| updated                     | 2013-06-17T20:18:58Z                 |
+	| OS-EXT-STS:task_state       | scheduling                           |
+	| key_name                    | None                                 |
+	| image                       | Red Hat Enterprise Linux 6.4         |
+	| hostId                      |                                      |
+	| OS-EXT-STS:vm_state         | building                             |
+	| flavor                      | m1.tiny                              |
+	| id                          | 76209a2f-a9df-4100-9cd8-4b7f875d1c3a |
+	| security_groups             | [{u'name': u'default'}]              |
+	| user_id                     | 246b8c2a23604442a10b5ca77b3b10d2     |
+	| name                        | rhel-test                            |
+	| adminPass                   | NDWo8F3bsn96                         |
+	| tenant_id                   | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	| created                     | 2013-06-17T20:18:58Z                 |
+	| OS-DCF:diskConfig           | MANUAL                               |
+	| metadata                    | {}                                   |
+	| accessIPv4                  |                                      |
+	| accessIPv6                  |                                      |
+	| progress                    | 0                                    |
+	| OS-EXT-STS:power_state      | 0                                    |
+	| OS-EXT-AZ:availability_zone | nova                                 |
+	| config_drive                |                                      |
+	+-----------------------------+--------------------------------------+
+
+Note that because we only have one private network, it assumes we want to join this one. Otherwise we would have had to specify a network to use.
 
 	# nova list
 	+--------------------------------------+-----------+--------+------------------+
 	| ID                                   | Name      | Status | Networks         |
 	+--------------------------------------+-----------+--------+------------------+
-	| 052413c7-7a9f-48d6-afac-7b13bc64c017 | RHEL-Test | ACTIVE | private=10.0.0.2 |
+	| 76209a2f-a9df-4100-9cd8-4b7f875d1c3a | rhel-test | ACTIVE | private=30.0.0.4 |
 	+--------------------------------------+-----------+--------+------------------+
 
-As you can see, our machine has been given a network address of 10.0.0.2 and has been started. Finally, lets remove this instance and repeat the process via the dashboard:
+As you can see, our machine has been given a network address of 30.0.0.4 and has been started. Finally, lets remove this instance and repeat the process via the dashboard:
 
-	# nova delete 052413c7-7a9f-48d6-afac-7b13bc64c017
+	# nova delete rhel-test
 
 ##**Starting instances via the Dashboard**
 
@@ -1266,9 +1644,10 @@ As you can see, our machine has been given a network address of 10.0.0.2 and has
 4. Choose 'Red Hat Enterprise Linux 6.4' from the Image drop-down box
 5. Give the instance a name
 6. Ensure that 'm1.tiny' is selected in the Flavour drop-down box
-7. Select 'Launch' in the bottom right-hand corner of the pop-up window
+7. Select the 'Networking' tab at the top and drag the private network from the 'available networks' area
+8. Select 'Launch' in the bottom right-hand corner of the pop-up window
 
-You'll notice that the instance will begin building and will provide you with an updated overview of the instance. Let's remove this VM before continuing:
+You'll notice that the instance will begin building and will provide you with an updated overview of the instance. Let's remove this VM before continuing with the lab...
 
 1. For the instance in question, in the final column 'Actions' click the drop-down arrow
 2. Select 'Terminate Instance'
@@ -1293,7 +1672,7 @@ Then, set the configuration for novncproxy up; on the cloud controller (openstac
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		vnc_enabled true
 
-On the compute nodes (node3 and node4), example shown below for node3:
+On the compute node:
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
 		novncproxy_base_url http://192.168.122.101:6080/vnc_auto.html
@@ -1305,14 +1684,12 @@ On the compute nodes (node3 and node4), example shown below for node3:
 		vnc_enabled true
 	
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
-		vncserver_listen 192.168.122.103
+		vncserver_listen 192.168.122.102
 	
 	# openstack-config --set /etc/nova/nova.conf DEFAULT \
-		vncserver_proxyclient_address 192.168.122.103
+		vncserver_proxyclient_address 192.168.122.102
 
-Note: Remember to use '192.168.122.104' for node4 in the above entries where '192.168.122.103' is used.
-
-Finally, changes to the iptables rules on our compute nodes need to be made for incoming VNC server connections. The default firewall rules that ship out of the box with RHEL only typically allow ssh access, then when openstack-nova-compute and openstack-nova-network services start, they dynamically re-write the firewall rules to allow for NAT-based routing and security. We need to make a modification to the base iptables rules to allow access from VNC clients, namely the VNC proxy service.
+Finally, changes to the iptables rules on our compute node need to be made for incoming VNC server connections. The default firewall rules that ship out of the box with RHEL only typically allow ssh access. We need to make a modification to the base iptables rules to allow access from VNC clients, namely the VNC service.
 
 	# lokkit -p 5900-5999:tcp
 
@@ -1324,10 +1701,9 @@ On the cloud controller we need to start and enable two services for VNC to work
 	# chkconfig openstack-nova-novncproxy on
 	# chkconfig openstack-nova-consoleauth on
 
-Finally, restart the compute services on the two compute-nodes:
+Finally, restart the compute services on the the compute-node:
 
-	# ssh root@node3 service openstack-nova-compute restart
-	# ssh root@node4 service openstack-nova-compute restart
+	# ssh root@openstack-compute1 service openstack-nova-compute restart
 
 VNC consoles are only available to instances created when 'vnc_enabled = True' is configured in /etc/nova/nova.conf, therefore we have to create a new instance to verify it's working correctly:
 
@@ -1342,32 +1718,33 @@ VNC consoles are only available to instances created when 'vnc_enabled = True' i
 	+--------------------------------------+------------------------------+--------+--------+
 
 	# nova boot --flavor 1 --image af094839-814e-4b76-99c4-9470a8b91903 rhel
-	+------------------------+--------------------------------------+
-	| Property               | Value                                |
-	+------------------------+--------------------------------------+
-	| OS-DCF:diskConfig      | MANUAL                               |
-	| OS-EXT-STS:power_state | 0                                    |
-	| OS-EXT-STS:task_state  | scheduling                           |
-	| OS-EXT-STS:vm_state    | building                             |
-	| accessIPv4             |                                      |
-	| accessIPv6             |                                      |
-	| adminPass              | 6tgAuLjZPPvA                         |
-	| config_drive           |                                      |
-	| created                | 2013-04-01T10:33:17Z                 |
-	| flavor                 | m1.tiny                              |
-	| hostId                 |                                      |
-	| id                     | c38fb239-370a-4d6f-87e2-5adf34aaa936 |
-	| image                  | Red Hat Enterprise Linux 6.4         |
-	| key_name               | None                                 |
-	| metadata               | {}                                   |
-	| name                   | rhel                                 |
-	| progress               | 0                                    |
-	| security_groups        | [{u'name': u'default'}]              |
-	| status                 | BUILD                                |
-	| tenant_id              | 58a576bfd7b34df1afb372c1c905798e     |
-	| updated                | 2013-04-01T10:33:17Z                 |
-	| user_id                | 3b0682e2872849d780ecde00b8d20e4e     |
-	+------------------------+--------------------------------------+
+	+-----------------------------+--------------------------------------+
+	| Property                    | Value                                |
+	+-----------------------------+--------------------------------------+
+	| status                      | BUILD                                |
+	| updated                     | 2013-06-17T20:18:58Z                 |
+	| OS-EXT-STS:task_state       | scheduling                           |
+	| key_name                    | None                                 |
+	| image                       | Red Hat Enterprise Linux 6.4         |
+	| hostId                      |                                      |
+	| OS-EXT-STS:vm_state         | building                             |
+	| flavor                      | m1.tiny                              |
+	| id                          | c38fb239-370a-4d6f-87e2-5adf34aaa936 |
+	| security_groups             | [{u'name': u'default'}]              |
+	| user_id                     | 246b8c2a23604442a10b5ca77b3b10d2     |
+	| name                        | rhel                                 |
+	| adminPass                   | NDWo8F3bsn96                         |
+	| tenant_id                   | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	| created                     | 2013-06-17T20:18:58Z                 |
+	| OS-DCF:diskConfig           | MANUAL                               |
+	| metadata                    | {}                                   |
+	| accessIPv4                  |                                      |
+	| accessIPv6                  |                                      |
+	| progress                    | 0                                    |
+	| OS-EXT-STS:power_state      | 0                                    |
+	| OS-EXT-AZ:availability_zone | nova                                 |
+	| config_drive                |                                      |
+	+-----------------------------+--------------------------------------+
 
 There's two ways of accessing the VNC console using novncproxy; either via the dashboard, simply select the instance and select the 'VNC' tab, or use the command-line utility and navigate to the URL specified:
 
@@ -1375,14 +1752,14 @@ There's two ways of accessing the VNC console using novncproxy; either via the d
 	+--------------------------------------+------+--------+------------------+
 	| ID                                   | Name | Status | Networks         |
 	+--------------------------------------+------+--------+------------------+
-	| c38fb239-370a-4d6f-87e2-5adf34aaa936 | rhel | BUILD  | private=10.0.0.3 |
+	| c38fb239-370a-4d6f-87e2-5adf34aaa936 | rhel | BUILD  | private=30.0.0.4 |
 	+--------------------------------------+------+--------+------------------+
 
 	# nova get-vnc-console rhel novnc
 	+-------+--------------------------------------------------------------------------------------+
 	| Type  | Url                                                                                  |
 	+-------+--------------------------------------------------------------------------------------+
-	| novnc | http://192.168.122.101:6080/vnc_auto.html?token=7ead2e85-6fe5-4a99-8f1e-35ae31447fb2 |
+	| novnc | http://192.168.122.101:6080/vnc_auto.html?token=164d6792-53b8-40d4-a2ba-6fee409bd514 |
 	+-------+--------------------------------------------------------------------------------------+
 
 #**Lab 9: Attaching Floating IP's to Instances**
@@ -1391,9 +1768,9 @@ There's two ways of accessing the VNC console using novncproxy; either via the d
 
 So far we've started instances, these instances have received private internal IP addresses (not typically routable outside of the OpenStack environment) and we can view the console via a VNC proxy in a web-browser. The next step is to configure access to these instances from outside of the private network.
 
-As a recap, iptables on the compute nodes provides NAT based networking to the instances, it provides them with both inbound and outbound networking using one or more physical interfaces (configured as public_interface and flat_interface). In a production environment the "flat_interface" would typically be connected to a private switch or a private/management network, completely isolated from the public facing interfaces. The issue is that public facing traffic cannot directly connect into the instances.
+As a recap, the cloud controller acts as a networking node in this configuration, via the L3-agent it provides the instances with both inbound and outbound networking using one or more physical interfaces (configured as 'br-int' and 'br-ex'). In a production environment a separate management network would be used for communication between the OpenStack components and an additional dedicated public network interface, completely isolated from the management and inter-instance networks.
 
-The "public_interface" allows additional IP addresses to be dynamically assigned to instances, ones that are routable from outside of the OpenStack environment. Behind the scenes the "public_interface" listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Nova network allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
+OpenStack allows us to assign 'floating IPs' to instances to allow network traffic from any external interface to be routed to a specific instance. The IP's assigned come directly from one or more external networks, thankfully we've already created one. Behind the scenes the node running the L3-agent listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Quantum allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
 
 ##**Creating Floating Addresses**
 
