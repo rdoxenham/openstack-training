@@ -155,6 +155,10 @@ After the machine has finished installing it will automatically be shut-down, we
 	Allocating 'openstack-compute1.img'
 
 	Clone 'openstack-compute1' created successfully.
+	
+As the compute-node is going to require more resources, at this point ensure that you increase the vCPU and memory count of your compute node:
+
+	# 
 
 As an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
 
@@ -211,7 +215,7 @@ Finally, start your first virtual machine that'll be used in the next lab:
 #**Lab 3: Installation and configuration of Keystone (Identity Service)**
 
 **Prerequisites:**
-* One of the four virtual machines created in the previous lab
+* A machine built to be the Cloud Controller (i.e. openstack-controller)
 * An active subscription to Red Hat's OpenStack Distribution -or- package repositories available locally
 
 **Tools used:**
@@ -619,7 +623,7 @@ Return back to your openstack-controller machine where you have your ssh session
 	disk size: 840M
 	cluster_size: 65536
 
-Note: If you've opted to use a disk-image you've already created outside of these labs, I strongly advise that you use 'virt-sysprep' to prepare the machine before importing.
+Note: If you've opted to use a disk-image you've already created outside of these labs, I strongly advise that you use 'virt-sysprep' to prepare the machine before importing. Instructions are available in Lab #2.
 
 Next we can create a new image within Glance and import its contents, it may take a few minutes to copy the data. The 'admin' account should be used to upload the image, we'll then make it public to every tenant, i.e. everybody:
 
