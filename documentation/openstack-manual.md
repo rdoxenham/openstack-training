@@ -9,18 +9,15 @@ Date: March 2013
 3. **Installation and configuration of Keystone (Identity Service)**
 4. **Installation and configuration of Glance (Image Service)**
 5. **Installation and configuration of Cinder (Volume Service)**
-6. **Installation and configuration of Nova (Compute Services)**
-7. **Installation and configuration of Horizon (OpenStack Frontend)**
-8. **Deployment of Instances**
-9. **Attaching Floating IP's to Instances**
-10. **Configuring the Metadata Service for Customisation**
-11. **Deploying fully customised builds using Puppet/Foreman**
+6. **Installation and configuration of Quantum (Networking Services)**
+7. **Installation and configuration of Nova (Compute Services)**
+8. **Installation and configuration of Horizon (OpenStack Frontend)**
+9. **Deployment of Instances**
+10. **Attaching Floating IP's to Instances**
+11. **Configuring the Metadata Service for Customisation**
 12. **Using Cinder to provide persistent data storage**
-13. **Installation and configuration of Quantum (Networking Services)**
-14. **Installation and configuration of Swift (Object Storage)**
-15. **Deploying and monitoring of instance collections using Heat**
-16. **Deploying charge-back and usage monitoring with Celiometer**
-17. **Implementing automated deployments with PackStack**
+13. **Deploying and monitoring of instance collections using Heat**
+14. **Deploying charge-back and usage monitoring with Celiometer**
 
 <!--BREAK-->
 
@@ -30,9 +27,9 @@ Date: March 2013
 
 This manual assumes that you're attending instructor-led training classes and that this material be used as a step-by-step guide on how to successfully complete the lab objectives. Prior knowledge gained from the instructor presentations is highly recommended, however for those wanting to complete this training via their own self-learning, a description at each section is available as well as a copy of the course slides.
 
-The course was written with the assumption that you're wanting to deploy OpenStack on-top of a Red Hat based platform, e.g. Red Hat Enterprise Linux or Fedora, and is written specifically for Red Hat's enterprise OpenStack Distribution (http://www.redhat.com/openstack) although the vast majority of the concepts and instructions will apply to other distributions. 
+The course was written with the assumption that you're wanting to deploy Red Hat OpenStack on-top of a Red Hat Enterprise Linux, e.g. Red Hat Enterprise Linux or Fedora, and is written specifically for Red Hat's enterprise OpenStack Distribution (http://www.redhat.com/openstack) although the vast majority of the concepts and instructions will apply to other distributions, including RDO.
 
-The use of a Linux-based hypervisor (ideally using KVM/libvirt) is highly recommended although not essential, the requirements where necessary are outlined throughout the course but for deployment on alternative platforms it is assumed that this is already configured by yourself. The course advises that four virtual machines are created, each with their own varying degrees of compute resource requirements so please ensure that enough resource is available. Please note that this course helps you deploy a test-bed for knowledge purposes, it's extremely unlikely that any form of production environment would be deployed in this manor.
+The use of a Linux-based hypervisor (ideally using KVM/libvirt) is highly recommended although not essential, the requirements where necessary are outlined throughout the course but for deployment on alternative platforms it is assumed that this is already configured by yourself. The course advises that two virtual machines are created, each with their own varying degrees of compute resource requirements so please ensure that enough resource is available. Please note that this course helps you deploy a test-bed for knowledge purposes, it's extremely unlikely that any form of production environment would be deployed in this manor.
 
 By undertaking this course you understand that I take no responsibility for any losses incurred and that you are following the instructions at your own free will. A working knowledge of virtualisation, the Linux command-line, networking, storage and scripting will be highly advantageous for anyone following this guide.
 
@@ -67,7 +64,7 @@ TODO: Finish this ;-)
 
 ##**Introduction**
 
-This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure. There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
+This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure. There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other (e.g. a libvirt-NAT interface) and an isolated network for inter-instance communication, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
 
 Estimated completion time: 15 minutes
 
@@ -118,7 +115,7 @@ Finally, ensure that the bridge is setup correctly on the host:
 #**Lab 2: Deploying virtual machines**
 
 **Prerequisites:**
-* A physical machine configured with a NAT'd network allocated for hosting virtual machines
+* A physical machine configured with a NAT'd network allocated for hosting virtual machines as well as an isolated vSwitch network
 
 **Tools used:**
 * virt command-line tools (e.g. virsh, virt-install, virt-viewer)
@@ -136,7 +133,7 @@ Estimated completion time: 30 minutes
 
 Assuming that you have a RHEL 6 x86_64 DVD iso available locally, you'll need to provide it for the installation. Alternatively, if you want to install via the network you can do so by using the '--location http://<path to installation tree>' tag within virt-install.
 
-To save time, we'll install a single virtual machine and just clone it afterwards, that way they're all identical.
+To save time, we'll install a single virtual machine and just clone it afterwards, that way they're all identical. If you're following this guide as part of instructor-led training, a pre-built image is available saving you even more time. Please ask the instructor for pre-built libvirt definitions and disk images, available in both qcow2 and vmdk formats, then skip the virt-install steps.
 
 ##**Creating virtual machines**
 
@@ -158,14 +155,6 @@ After the machine has finished installing it will automatically be shut-down, we
 	Allocating 'openstack-compute1.img'
 
 	Clone 'openstack-compute1' created successfully.
-	# virt-clone -o openstack-controller -n node3 -f /var/lib/libvirt/images/node3.img --mac 52:54:00:00:00:03
-	Allocating 'node3.img'
-
-	Clone 'node3' created successfully.
-	# virt-clone -o openstack-controller -n node4 -f /var/lib/libvirt/images/node4.img --mac 52:54:00:00:00:04
-	Allocating 'node4.img'
-
-	Clone 'node4' created successfully.
 
 As an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
 
@@ -184,11 +173,9 @@ As an *optional* step for convenience, we can leave the virtual machines as DHCP
 
   	<ip address='192.168.122.1' netmask='255.255.255.0'>
     		<dhcp>
-      			<range start='192.168.122.2' end='192.168.122.100' />
+      			<range start='192.168.122.2' end='192.168.122.9' />
 	      		<host mac='52:54:00:00:00:01' name='openstack-controller' ip='192.168.122.101' />
       			<host mac='52:54:00:00:00:02' name='openstack-compute1' ip='192.168.122.102' />
-      			<host mac='52:54:00:00:00:03' name='node3' ip='192.168.122.103' />
-      			<host mac='52:54:00:00:00:04' name='node4' ip='192.168.122.104' />
     		</dhcp>
   	</ip>
 
@@ -200,7 +187,7 @@ Then, to save changes, run:
 
 Note: It's possible to configure the guests manually with static IP addresses after the machine has booted up, note that you'll have to use virt-viewer to access the console first
 
-	# virt-viewer nodeX
+	# virt-viewer openstack-controller
 
 	-inside the guest-
 
@@ -215,8 +202,6 @@ For ease of connection to your virtual machine instances, it would be prudent to
 	# cat >> /etc/hosts <<EOF
 	192.168.122.101 openstack-controller
 	192.168.122.102 openstack-compute1
-	192.168.122.103 node3
-	192.168.122.104 node4
 	EOF
 
 Finally, start your first virtual machine that'll be used in the next lab:
@@ -245,7 +230,7 @@ As keystone provides the foundation for everything that OpenStack uses this will
 
 	# ssh root@openstack-controller
 
-This system was deployed via the DVD, so we'll need to register and subscribe this system to the OpenStack channels. Note that if you have repositories available locally, you can skip these next few steps.
+We'll need to register and subscribe this system to the OpenStack channels. Note that if you have repositories available locally, you can skip these next few steps.
 
 	# subscription-manager register
 	(Enter your Red Hat Network credentials)
@@ -257,17 +242,15 @@ Next you need to subscribe your system to both a Red Hat Enterprise Linux pool a
 
 	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
 
-At this stage it would be prudent to update to the latest package set available for the base OS:
-
-	# yum update -y
-
-We need to enable the OpenStack repositories next, depending on whether you chose a minimal or basic installation for RHEL, you may already have this package:
+We need to enable the OpenStack repositories next:
 
 	# yum install yum-utils -y
-
-Either way, to enable the repository-
-
 	# yum-config-manager --enable rhel-server-ost-6-3-rpms --setopt="rhel-server-ost-6-3-rpms.priority=1"
+	
+Install the Red Hat OpenStack-specific Kernel and associated packages, this is down to the standard Red Hat kernel not being shipped with namespace support. Please ask your instructor for these files, if you're not following an instructor-led training course then please ask your Red Hat representative.
+
+	# yum localinstall /path/to/rpms/*.rpm -y	
+	# yum update -y
 	
 	# reboot
 
@@ -472,7 +455,7 @@ Once again noting that we're using port 5000 instead as this is the general purp
 	| 679cae35033f4bbc9a18aff0c15b7a99 | admin |   True  |       |
 	+----------------------------------+-------+---------+-------+
 
-To accomodate massive scalability, OpenStack was built using AMQP-based messaging for communication. We're going to install qpidd on our 'cloud condutor' node but we'll disable authentication just for convenience. In a production environment authentication would certainly be enabled and configured properly. We need to install this now as later on in the guide we'll rely on this message bus being available.
+To accomodate massive scalability, OpenStack was built using AMQP-based messaging for communication. We're going to install qpidd on our 'cloud conductor' node but we'll disable authentication just for convenience. In a production environment authentication would certainly be enabled and configured properly. We need to install this now as later on in the guide we'll rely on this message bus being available.
 
 	# yum install qpid-cpp-server -y
 	# sed -i 's/auth=.*/auth=no/g' /etc/qpidd.conf
@@ -621,7 +604,7 @@ If you get an empty table it was successful, otherwise we may need to check the 
 
 As previously mentioned, images uploaded to Glance should be 're-initialised' or 'syspreped' so that any system-specific configuration is wiped away, this ensures that there are no conflicts between instances that are started. It's common practice to find pre-defined virtual machine images online that contain a base operating system and perhaps a set of packages for a particular purpose. The next few steps will allow you to take such an image and upload it into the Glance registry. 
 
-Firstly, we need to get access to an image, if you're following the training course, get hold of the RHEL 6.4 Cloud template from your instructor... 
+Firstly, we need to get access to an image, if you're following the training course, get hold of the RHEL 6.4 Cloud template from your instructor (this is slightly different to the original template provided as it has cloud-init already installed, more to come later).
 
 	(On your hypervisor host)# scp /path/to/rhel64-cloud.qcow2 root@192.168.122.101:/root
 
@@ -791,7 +774,7 @@ Finally, endpoints for the Cinder service need to be added to Keystone:
 	|     type    |              volume              |
 	+-------------+----------------------------------+
 
-And then the endpoint, not forgetting to use the id from the previous command, *NOT* the one you see above in this guide. Also note that we're setting the endpoint to be sitting at openstack-compute1 and not openstack-controller, hence the 192.168.122.102 usage:
+And then the endpoint, not forgetting to use the id from the previous command, *NOT* the one you see above in this guide.
 
 	# keystone endpoint-create --service_id 94ed0a651b4342e2a2c25c00c2b271d8 \
 		--publicurl "http://192.168.122.101:8776/v1/\$(tenant_id)s" \
@@ -842,7 +825,7 @@ Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying 
 	(Ctrl-C to quit)
 
 
-#**Lab 7: Installation and configuration of Quantum (Networking Service)**
+#**Lab 6: Installation and configuration of Quantum (Networking Service)**
 
 **Prerequisites:**
 * Keystone installed and configured as per Lab 3
@@ -1069,10 +1052,52 @@ Start the services and configure them to come up on boot:
 	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
 	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
 	
+##**RHEL 6.4 Bug Workaround**
+
+Unfortunately there's a current bug with RHEL 6.4, if VLANs are being used to isolate tenant networks the VLAN tags get dropped when received by other nodes sitting on the network. This can be worked around by creating a phantom network interface with an associated VLAN tag, that way it ensures that when a packet is received with a VLAN tag (including over the OVS bridges) they are honoured. A quick work-around is as follows:
+
+	(If you're not already connected to openstack-controller)
+	# ssh root@openstack-controller
+	
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1.200	
+	DEVICE=eth1.200
+	ONBOOT=yes
+	TYPE=Ethernet
+	VLAN=yes
+	EOF
+	
+	# ifup eth1.200
+	
 ##**Preparing our Compute Node**
 
-Thankfully, the configuration for the compute node is a lot simpler! We can copy the configuration files from the controller:
+As this is the first time we're using our compute node, follow the initial steps to ensure we have correct package access:
 
+	# subscription-manager register
+	(Enter your Red Hat Network credentials)
+
+Next you need to subscribe your system to both a Red Hat Enterprise Linux pool and the OpenStack Enterprise pools-
+
+	# subscription-manager list --available
+	(Discover pool ID's for both)
+
+	# subscription-manager subscribe --pool <RHEL Pool> --pool <OpenStack Pool>
+
+We need to enable the OpenStack repositories next:
+
+	# yum install yum-utils -y
+	# yum-config-manager --enable rhel-server-ost-6-3-rpms --setopt="rhel-server-ost-6-3-rpms.priority=1"
+	
+Install the Red Hat OpenStack-specific Kernel and associated packages, this is down to the standard Red Hat kernel not being shipped with namespace support. Please ask your instructor for these files, if you're not following an instructor-led training course then please ask your Red Hat representative.
+
+	# yum localinstall /path/to/rpms/*.rpm -y	
+	# yum update -y
+	# reboot
+
+Thankfully, the Open vSwitch configuration for the compute node is a lot simpler! We can copy the configuration files from the controller:
+
+	(After the machine has rebooted)
+	# ssh root@openstack-compute1
+	
 	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
 	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
 	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
@@ -1112,8 +1137,19 @@ Make sure the correct services are started and enabled:
 
 	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
 	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
+	
+As with the openstack-controller, we need to workaround the current VLAN bug:
 
-#**Lab 8: Installation and configuration of Nova (Compute Service)**
+	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1.200	
+	DEVICE=eth1.200
+	ONBOOT=yes
+	TYPE=Ethernet
+	VLAN=yes
+	EOF
+	
+	# ifup eth1.200
+
+#**Lab 7: Installation and configuration of Nova (Compute Service)**
 
 **Prerequisites:**
 * Keystone installed and configured as per Lab 3
@@ -1427,7 +1463,7 @@ Networks can be verified like so:
 	| 89ee4bc1-073e-4ccd-a108-6c839dad011d |      | 192.168.122.0/24 | {"start": "192.168.122.10", "end": "192.168.122.99"}  |
 	+--------------------------------------+------+------------------+-------------------------------------------------------+
 	
-#**Lab 9: Installation and configuration of Horizon (Frontend)**
+#**Lab 8: Installation and configuration of Horizon (Frontend)**
 
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova and Glance installed
@@ -1458,11 +1494,11 @@ We can then start the service (the dashboard exists as a configuration plugin to
 	# service httpd start
 	# chkconfig httpd on
 
-You can then navigate to http://192.168.122.101/dashboard (or http://openstack-controller/dashboard if you have updated your hosts file)- you can use your user account to login as well as the admin one to see the differences.
+You can then navigate to http://192.168.122.101/dashboard (or http://openstack-controller/dashboard if you have updated your hosts file)- you can use your user account to login as well as the admin one to see the differences. Don't expect everything to work as expected (yet), we've not finished the installation!
 
 Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, although in future production deployments it would be prudent to use SSL for communications and configure the systems accordingly. 
 
-#**Lab 10: Deployment of Instances**
+#**Lab 9: Deployment of Instances**
 
 **Prerequisites:**
 * All of the previous labs completed, i.e. Keystone, Cinder, Nova, Quantum and Glance installed
@@ -1762,7 +1798,7 @@ There's two ways of accessing the VNC console using novncproxy; either via the d
 	| novnc | http://192.168.122.101:6080/vnc_auto.html?token=164d6792-53b8-40d4-a2ba-6fee409bd514 |
 	+-------+--------------------------------------------------------------------------------------+
 
-#**Lab 9: Attaching Floating IP's to Instances**
+#**Lab 10: Attaching Floating IP's to Instances**
 
 ##**Introduction**
 
@@ -1774,176 +1810,261 @@ OpenStack allows us to assign 'floating IPs' to instances to allow network traff
 
 ##**Creating Floating Addresses**
 
-First, let's look at defining the addresses and assigning them manually. For this task you'll need an instance running first, if you don't have one running revisit the previous lab and start an instance:
+For this task you'll need an instance running first, if you don't have one running revisit the previous lab and start an instance. We'll request floating IP's from a pool that we've already assigned, this is known as the allocation pool on the external network.
 
 	# ssh root@openstack-controller
-	# source keystonerc_admin
-
-It's possible to create an entire range of IP addresses, but as we're only using a single interface we'll define a subset of addresses:
-
-	# nova-manage floating create 192.168.122.201
-	# nova-manage floating create 192.168.122.202
-	# nova-manage floating create 192.168.122.203
-	# nova-manage floating create 192.168.122.204
-	# nova-manage floating create 192.168.122.205
-	# nova-manage floating create 192.168.122.206
-
-	# nova-manage floating list
-	None	192.168.122.201	None	nova	br100
-	None	192.168.122.202	None	nova	br100
-	None	192.168.122.203	None	nova	br100
-	None	192.168.122.204	None	nova	br100
-	None	192.168.122.205	None	nova	br100
-	None	192.168.122.206	None	nova	br100
-
-Next, switch back to the 'user' role for Keystone and make sure your image is visible:
-
 	# source keystonerc_user
+
+OpenStack makes you 'claim' an IP from the available list of IP addresses for the tenant (project) you're currently running in before you can assign it to an instance, we specify the 'ext' network to claim from:
+
+	# quantum floatingip-create ext
+	Created a new floatingip:
+	+---------------------+--------------------------------------+
+	| Field               | Value                                |
+	+---------------------+--------------------------------------+
+	| fixed_ip_address    |                                      |
+	| floating_ip_address | 192.168.122.11                       |
+	| floating_network_id | 7382ead9-faba-405a-a78f-404c236c9334 |
+	| id                  | 2f8a9079-55fa-44ab-b2c9-99685d7f3664 |
+	| port_id             |                                      |
+	| router_id           |                                      |
+	| tenant_id           | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	+---------------------+--------------------------------------+
+
+You can see that it's attached to our tenant, i.e. 'demo'.
+
+##**Assigning an address**
+
+Next, we can assign our claimed IP address to an instance. Unfortunately the command-line tools could do with a bit of work to make them a lot easier to do this. To associate an IP address we need the floating-ip id and the Quantum port-id of our instances virtual NIC.
+
+The first thing to do is check the IP address of our started instance:
+
 	# nova list
 	+--------------------------------------+------+--------+------------------+
 	| ID                                   | Name | Status | Networks         |
 	+--------------------------------------+------+--------+------------------+
-	| cbbb1794-0ea9-447a-a2f8-8fad74c11426 | rhel | ACTIVE | private=10.0.0.2 |
+	| 843441f6-b8ab-4ed9-9231-3326ee19e6ec | test | ACTIVE | private=30.0.0.2 |
 	+--------------------------------------+------+--------+------------------+
+	
+Next, take the floating-IP id:
 
-OpenStack makes you 'claim' an IP from the available list of IP addresses for the tenant (project) you're currently running in before you can assign it to an instance:
+	# quantum floatingip-list
+	+--------------------------------------+------------------+---------------------+---------+
+	| id                                   | fixed_ip_address | floating_ip_address | port_id |
+	+--------------------------------------+------------------+---------------------+---------+
+	| 2f8a9079-55fa-44ab-b2c9-99685d7f3664 |                  | 192.168.122.11      |         |
+	+--------------------------------------+------------------+---------------------+---------+
+	
+Then, check the port-id for this assigned IP address:
 
-	# nova floating-ip-create
-	+-----------------+-------------+----------+------+
-	| Ip              | Instance Id | Fixed Ip | Pool |
-	+-----------------+-------------+----------+------+
-	| 192.168.122.201 | None        | None     | nova |
-	+-----------------+-------------+----------+------+
+	# quantum port-list | grep 30.0.0.2 | awk '{print $2;}'
+	d8233763-a214-47db-80bb-76885a06205b
+	
+Finally, associate them:
 
-##**Assigning an address**
+	# quantum floatingip-associate 2f8a9079-55fa-44ab-b2c9-99685d7f3664 d8233763-a214-47db-80bb-76885a06205b
+	Associated floatingip 2f8a9079-55fa-44ab-b2c9-99685d7f3664
+	
+Verify using:
 
-Next, we can assign it to an instance:
+	# quantum floatingip-list
+	+--------------------------------------+------------------+---------------------+--------------------------------------+
+	| id                                   | fixed_ip_address | floating_ip_address | port_id                              |
+	+--------------------------------------+------------------+---------------------+--------------------------------------+
+	| 2f8a9079-55fa-44ab-b2c9-99685d7f3664 | 30.0.0.2         | 192.168.122.11      | d8233763-a214-47db-80bb-76885a06205b |
+	+--------------------------------------+------------------+---------------------+--------------------------------------+
+	
+	# nova list
+	+--------------------------------------+------+--------+----------------------------------+
+	| ID                                   | Name | Status | Networks                         |
+	+--------------------------------------+------+--------+----------------------------------+
+	| 843441f6-b8ab-4ed9-9231-3326ee19e6ec | test | ACTIVE | private=30.0.0.2, 192.168.122.11 |
+	+--------------------------------------+------+--------+----------------------------------+
 
-	# nova add-floating-ip rhel 192.168.122.201
+If you want to go a bit further to check the router is actually listening on the new floating IP address we can dive into the network namespaces:
 
-To check the success:
+	# ip netns list
+	qrouter-6bea3ee4-47d6-4a3e-a9da-c82fed18baa0
+	qdhcp-7bdfd266-65da-4552-af23-40769791808a
+	
+	# ip netns exec qrouter-6bea3ee4-47d6-4a3e-a9da-c82fed18baa0 ip a
+	14: lo: <LOOPBACK,UP,LOWER_UP> mtu 16436 qdisc noqueue state UNKNOWN 
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+	19: qr-4c2be66e-1e: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP qlen 1000
+    link/ether fa:16:3e:2e:ee:fc brd ff:ff:ff:ff:ff:ff
+    inet 30.0.0.1/24 brd 30.0.0.255 scope global qr-4c2be66e-1e
+    inet6 fe80::f816:3eff:fe2e:eefc/64 scope link 
+       valid_lft forever preferred_lft forever
+	21: qg-11f2d170-ba: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP qlen 1000
+    link/ether fa:16:3e:cd:2b:20 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.10/24 brd 192.168.122.255 scope global qg-11f2d170-ba
+    inet 192.168.122.11/32 brd 192.168.122.11 scope global qg-11f2d170-ba
+    inet6 fe80::f816:3eff:fecd:2b20/64 scope link 
+       valid_lft forever preferred_lft forever
+       
+Above you can see that this router is listening on a number of interfaces. First is 30.0.0.1 which represents our gateway for our internal network. It's also listening on 192.168.122.10, the Open vSwitch gateway to the external network as well as our floating IP, 192.168.122.11.
 
-	# nova-manage floating list
-	58a576bfd7b34df1afb372c1c905798e 192.168.122.201 cbbb1794-0ea9-447a-a2f8-8fad74c11426	nova	br100
-	None	192.168.122.202	None	nova	br100
-	None	192.168.122.203	None	nova	br100
-	None	192.168.122.204	None	nova	br100
-	None	192.168.122.205	None	nova	br100
-	None	192.168.122.206	None	nova	br100
-
-In the above you can see that '58a576bfd7b34df1afb372c1c905798e' is my tenant-id and 'cbbb1794-0ea9-447a-a2f8-8fad74c11426' is the instance-id. Via the message bus the nova-network instance running on the compute node responsible for this instance will dynamically add the floating IP address to its public interface and will adjust the iptables firewall rules to forward traffic to the instance.
+Note: Trying to ping your floating IP will currently fail, see the next section for details...
 
 ##**OpenStack Security Groups**
 
-By default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Nova ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
+By default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Quantum ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
 
 First, enable ICMP for *every* node:
 
-	# nova secgroup-add-rule default icmp -1 -1 0.0.0.0/0
-	+-------------+-----------+---------+-----------+--------------+
-	| IP Protocol | From Port | To Port | IP Range  | Source Group |
-	+-------------+-----------+---------+-----------+--------------+
-	| icmp        | -1        | -1      | 0.0.0.0/0 |              |
-	+-------------+-----------+---------+-----------+--------------+
+	# quantum security-group-rule-create --protocol icmp --remote-ip-prefix 0.0.0.0/0 default
+	Created a new security_group_rule:
+	+-------------------+--------------------------------------+
+	| Field             | Value                                |
+	+-------------------+--------------------------------------+
+	| direction         | ingress                              |
+	| ethertype         | IPv4                                 |
+	| id                | dba33ff9-c616-4d8c-90ee-40512de5313d |
+	| port_range_max    |                                      |
+	| port_range_min    |                                      |
+	| protocol          | icmp                                 |
+	| remote_group_id   |                                      |
+	| remote_ip_prefix  | 0.0.0.0/0                            |
+	| security_group_id | b4f0829a-b4b6-45ed-972b-bc5d0e55bd58 |
+	| tenant_id         | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	+-------------------+--------------------------------------+
 
-Within a few seconds (for the nova-network on the compute nodes to pick the changes up) you should be able to ping our floating IP:
+Within a few seconds (for the Quantum L3-agent on the controller node to pick the changes up) you should be able to ping your floating IP:
 
-	# ping -c4 192.168.122.201
-	PING 192.168.122.201 (192.168.122.201) 56(84) bytes of data.
-	64 bytes from 192.168.122.201: icmp_seq=1 ttl=63 time=6.55 ms
-	64 bytes from 192.168.122.201: icmp_seq=2 ttl=63 time=2.47 ms
+	# ping -c4 192.168.122.11
+	PING 192.168.122.11 (192.168.122.11) 56(84) bytes of data.
+	64 bytes from 192.168.122.11: icmp_seq=1 ttl=63 time=2.32 ms
+	64 bytes from 192.168.122.11: icmp_seq=2 ttl=63 time=0.965 ms
 	...
 
 We can ping, but we can't SSH yet, as that's still not allowed:
 
-	# ssh -v root@192.168.122.201
+	# ssh -v root@192.168.122.11
 	OpenSSH_5.3p1, OpenSSL 1.0.0-fips 29 Mar 2010
 	debug1: Reading configuration data /etc/ssh/ssh_config
 	debug1: Applying options for *
-	debug1: Connecting to 192.168.122.201 [192.168.122.201] port 22.
-	debug1: connect to address 192.168.122.201 port 22: Connection timed out
-	ssh: connect to host 192.168.122.201 port 22: Connection timed out
+	debug1: Connecting to 192.168.122.11 [192.168.122.11] port 22.
+	debug1: connect to address 192.168.122.11 port 22: Connection timed out
+	ssh: connect to host 192.168.122.11 port 22: Connection timed out
 
-Next, let's try adding a manual rule, to allow SSH access *just* for our current running instance:
+Next, let's try adding another rule, to allow SSH access for all instances in the group:
 
-	# nova secgroup-add-rule default tcp 22 22 192.168.122.201/0
-	+-------------+-----------+---------+-------------------+--------------+
-	| IP Protocol | From Port | To Port | IP Range          | Source Group |
-	+-------------+-----------+---------+-------------------+--------------+
-	| tcp         | 22        | 22      | 192.168.122.201/0 |              |
-	+-------------+-----------+---------+-------------------+--------------+
+	# quantum security-group-rule-create --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0.0.0.0/0 default
+	Created a new security_group_rule:
+	+-------------------+--------------------------------------+
+	| Field             | Value                                |
+	+-------------------+--------------------------------------+
+	| direction         | ingress                              |
+	| ethertype         | IPv4                                 |
+	| id                | b8ed2037-be88-4f26-bd4d-887558f94288 |
+	| port_range_max    | 22                                   |
+	| port_range_min    | 22                                   |
+	| protocol          | tcp                                  |
+	| remote_group_id   |                                      |
+	| remote_ip_prefix  | 0.0.0.0/0                            |
+	| security_group_id | b4f0829a-b4b6-45ed-972b-bc5d0e55bd58 |
+	| tenant_id         | 97b43bd18e7c4f7ebc45b39b090e9265     |
+	+-------------------+--------------------------------------+
 
 And, let's retry the SSH connection..
 
-	# ssh root@192.168.122.201
-	The authenticity of host '192.168.122.201 (192.168.122.201)' can't be established.
-	RSA key fingerprint is c8:ea:0e:9d:19:e6:74:de:8c:4c:d5:6b:78:5d:b5:41.
+	# ssh root@192.168.122.11
+	The authenticity of host '192.168.122.11 (192.168.122.11)' can't be established.
+	RSA key fingerprint is 18:71:dd:3d:c5:cf:6b:5a:73:d4:e3:0b:11:af:7a:ec.
 	Are you sure you want to continue connecting (yes/no)? yes
-	Warning: Permanently added '192.168.122.201' (RSA) to the list of known hosts.
-	root@192.168.122.201's password: 
-	[root@rhel ~]#
+	Warning: Permanently added '192.168.122.11' (RSA) to the list of known hosts.
+	root@192.168.122.11's password: 
+	[root@test ~]#
 
-Let's remove this rule and replace it with a rule that allows SSH access to all nodes:
-
-	# nova secgroup-delete-rule default tcp 22 22 192.168.122.201/0
-	# nova secgroup-add-rule default tcp 22 22 0.0.0.0/0
-	+-------------+-----------+---------+-----------+--------------+
-	| IP Protocol | From Port | To Port | IP Range  | Source Group |
-	+-------------+-----------+---------+-----------+--------------+
-	| tcp         | 22        | 22      | 0.0.0.0/0 |              |
-	+-------------+-----------+---------+-----------+--------------+
-
-The current IP addresses for the instance can always be found by using 'nova list', provided that the instance exists within your tenant:
+Let's clean-up this instance before we proceed with the next section:
 
 	# nova list
-	+--------------------------------------+------+--------+-----------------------------------+
-	| ID                                   | Name | Status | Networks                          |
-	+--------------------------------------+------+--------+-----------------------------------+
-	| cbbb1794-0ea9-447a-a2f8-8fad74c11426 | rhel | ACTIVE | private=10.0.0.2, 192.168.122.201 |
-	+--------------------------------------+------+--------+-----------------------------------+
+	+--------------------------------------+------+--------+----------------------------------+
+	| ID                                   | Name | Status | Networks                         |
+	+--------------------------------------+------+--------+----------------------------------+
+	| 843441f6-b8ab-4ed9-9231-3326ee19e6ec | test | ACTIVE | private=30.0.0.2, 192.168.122.11 |
+	+--------------------------------------+------+--------+----------------------------------+
+	# nova delete test
 
 ##**Automating Floating IP Allocation**
 
-For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. The final part of this lab will configure this. There's a simple option that needs to be provided in the Nova configuration file (/etc/nova/nova.conf) for all compute nodes:
+For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. Unfortunately in Grizzly/Quantum, it's not currently supported whereas it was with the previous nova-network implementation. Therefore the old section of this guide has been removed.
 
-	(On a compute node, e.g. node3 or node4)
-	# openstack-config --set /etc/nova/nova.conf DEFAULT auto_assign_floating_ip True
-	# service openstack-nova-network restart
-	# service openstack-nova-compute restart
 
-Just remember to make these changes (and service restarts) on all compute nodes for changes to take place.
-
-Before proceeding, return clean up the manual allocation of the '192.168.122.201' address:
-
-	# ssh root@openstack-controller
-	# source keystonerc_user
-
-	# nova-manage floating delete 192.168.122.201
-	# nova-manage floating list
-	None	192.168.122.202	None	nova	br100
-	None	192.168.122.203	None	nova	br100
-	None	192.168.122.204	None	nova	br100
-	None	192.168.122.205	None	nova	br100
-	None	192.168.122.206	None	nova	br100
-	None	192.168.122.207	None	nova	br100
-
-#**Lab 10: Configuring the Metadata Service for Customisation**
+#**Lab 11: Configuring the Metadata Service for Customisation**
 
 ##**Introduction**
 
 OpenStack provides a metadata service for instances to receive some instance-specific configuration after first-boot and mimics what public cloud offerings such as Amazon AWS/EC2 provide. A prime example of data contained in the metadata service is a public key, one that can be used to connect directly into an instance via ssh. Other examples include executable code ('user-data'), allocating system roles, security configurations etc. In this lab we'll do two things, register and use a public key for authentication and execute a post-boot script on our instances.
 
-OpenStack provides the metadata API via a RESTful interface, the API typically listens on each of the compute nodes and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Nova automatically routes all HTTP connections to this address to the metadata service and is therefore aware of which instance made the connection; again, this is done via NAT.
+OpenStack provides the metadata API via a RESTful interface, the API listens on a designated nide and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Quantum automatically routes all HTTP connections to this address to the Nova metadata-api via the quantum-metadata-agent service and is therefore aware of which instance made the connection; again, this is done via NAT.
 
 The data contained by the service is created by the users upon creation of an instance, OpenStack provides multiple ways of including this data, dependent on the type of information being included. It's down to the creators of the VM image to configure the boot-up process so that it automatically connects into the metadata service and retrieves (and processes) the data. There are two primary ways of doing this, the first option is to handcrank a first-boot script that sifts through the metadata and applies any changes manually, the second is to use 'cloud-init', a package that understands the metadata service and knows how to make the required changes over a wide variety of Linux-based operating systems. For example, if a public key has been assigned to an instance, it will automatically download it and install it into the correct location.
 
-##**Installing cloud-init**
+##**Enabling the Metadata API**
 
-cloud-init has been available in RHEL since the release of 6.4 and is also been part of Fedora since F17, therefore the package 'cloud-init' can be installed *before* the machine is sysprep'd and enabled for boot, for example, assuming you're connected to your virtual machine that you're about to sysprep:
+The metadata API service sits on a designated node, in this lab we'll enable it on the cloud controller (openstack-controller). We need to change a few configuration options as well as start some services:
 
-	# yum install cloud-init -y
+	# ssh root@openstack-controller
+	
+First, configure Nova so that it knows what to do when we start the metadata-api service:
+	
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host 192.168.122.101
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
+	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
 
-By default, cloud-init is set to automatically connect out to the metadata server upon boot. Options can be set in /etc/cloud/cloud.cfg, e.g. some options can be disabled.
+Now configure the Quantum metadata agent, it needs to know how to communicate with Keystone:
+
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT auth_url http://192.168.122.101:35357/v2.0/
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT auth_region regionOne
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_tenant_name services
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_user quantum
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_password quantumpasswd
+
+And it then needs to know how to connect out to Nova as this service is merely a Proxy:
+
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT nova_metadata_ip 192.168.122.101
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT nova_metadata_port 8700
+	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT metadata_proxy_shared_secret metasecret123
+	
+The L3-agent sets up the routing for us, therefore we should specify how it should route the requests to the metadata-api;
+
+	#  openstack-config --set /etc/quantum/l3_agent.ini DEFAULT metadata_ip 192.168.122.101
+	#  openstack-config --set /etc/quantum/l3_agent.ini DEFAULT metadata_port 8700
+	
+Next, update the Nova configuration file on the controller to ensure it listens on this port for metadata:
+
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host 192.168.122.101
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8700
+	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
+	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
+
+Enable the TCP port through the firewall:
+
+	# lokkit -p 8700:tcp
+	
+Start and enable the services:
+
+	# chkconfig quantum-metadata-agent on
+	# service quantum-metadata-agent start
+	# service openstack-nova-api restart
+	# service quantum-l3-agent restart
+	
+You can check the routing quite easily on the cloud controller, it shows that port 80 for 169.254.169.254 routes to the host at port 8700, just remember to check it on the correct namespace:
+
+	# ip netns list
+	qrouter-6bea3ee4-47d6-4a3e-a9da-c82fed18baa0
+	qdhcp-7bdfd266-65da-4552-af23-40769791808a
+	
+	# ip netns exec qrouter-6bea3ee4-47d6-4a3e-a9da-c82fed18baa0 iptables -L -t nat | grep 169
+	REDIRECT   tcp  --  anywhere             169.254.169.254     tcp dpt:http redir ports 8700 
+
 
 ##**Uploading public keys**
 
@@ -1983,21 +2104,50 @@ Based on your tenant, it will add that public key to be made available to all ru
 
 Note: cloud-init sometimes disables the root user logging in and enabled a 'cloud-user' account instead; please check your VM image when you create it (/etc/cloud/cloud.cfg).
 
-##**Enabling the Metadata API**
+Next, launch an instance and check that you can connect in over SSH *without* it asking you for a password, if the metadata server worked correctly you should be able to. If not, connect in via the console and check for errors by running a 'wget http://169.254.169.254/latest/meta-data/instance-id' and tailing '/var/log/quantum/quantum-ns*'. All of this can be carried out either via the nova CLI commands, or via the dashboard.
 
-The metadata API service usually sits on the compute nodes, therefore it's easy for the routing to take place from the instances to the host that they're running on. This is also the default out-of-the-box option for Nova, and therefore it requires no additional configuration switches. It's simply a case of enabling the service and ensuring it comes up on boot, therefore on your compute nodes:
+##**Executing boot-time scripts**
 
-	# ssh root@node3
-	# service openstack-nova-metadata-api start
-	# chkconfig openstack-nova-metadata-api on
+In the OpenStack dashboard, we can insert script-code that will get executed at boot-time via cloud-init (or similar, depending on distribution), this can be carried out via the CLI also but using the Dashboard makes things easier:
 
-	(Repeat for node4)
+1. Login to the dashboard at 'http://192.168.122.101/dashboard' (or via the hostname if configured in hosts/DNS).
+2. Select 'Instances' on the left hand-side
+3. Select 'Launch Instance' at the top right
+4. Choose your image type and network as normal
+5. Select the final tab at the top named 'Post-Creation'
+6. Paste in the following:
+	#!/bin/bash
+	uname -a > /tmp/uname
+	date > /tmp/date
+7. Select 'Launch' at the bottom of the pop-up window
+8. When the machine starts to spawn, associate a floating-ip by choosing 'More' --> 'Associate Floating IP'
+9. Refresh the page to display the floating IP that has been assigned
 
-You can check the routing quite easily on one of the compute nodes, it shows that port 80 for 169.254.169.254 routes to the host at port 8775:
+Now, try and connect out to the instance, noting that it may still be booting so be patient! 
 
-	# iptables -S -t nat | grep 169.254
-	-A nova-network-PREROUTING -d 169.254.169.254/32 -p tcp -m tcp \
-		--dport 80 -j DNAT --to-destination 192.168.122.103:8775
+	# source keystonerc_user
+	# nova list
+	+--------------------------------------+--------+--------+----------------------------------+
+	| ID                                   | Name   | Status | Networks                         |
+	+--------------------------------------+--------+--------+----------------------------------+
+	| c025278e-7067-42c0-977c-d428605daafc |  rhel  | ACTIVE | private=30.0.0.2, 192.168.122.11 |
+	+--------------------------------------+--------+--------+----------------------------------+
+	
+	# ssh root@192.168.122.11 cat /tmp/uname
+	Linux rhel 2.6.32-358.el6.x86_64 #1 SMP Wed May 29 19:20:22 EDT 2013 x86_64 x86_64 x86_64 GNU/Linux
+	
+	# ssh root@192.168.122.11 cat /tmp/date
+	Tue Jun 11 11:57:55 BST 2013
 
-	# netstat -tunpl | grep 8775
-	tcp     0    0 0.0.0.0:8775   0.0.0.0:*   LISTEN   5956/python
+
+#**Lab 12: Using Cinder to provide persistent data storage**
+
+##**Introduction**
+	
+#**Lab 13: Installation and Configuration of OpenStack Heat (Orchestration)**
+
+##**Introduction**
+
+#**Lab 14: Installation and Configuration of OpenStack Ceilometer (Metering)**
+
+##**Introduction**
