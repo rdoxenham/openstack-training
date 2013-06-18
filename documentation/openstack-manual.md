@@ -266,7 +266,6 @@ Now that the system is set-up for package repositories, has been fully updated a
 
 By default, Keystone uses a back-end MySQL database, whilst it's possible to use other back-ends we'll be using the default in this guide. There's a useful tool called 'openstack-db' which is responsible for setting up the database, initialising the tables and populating it with basic data required to get Keystone started. Note that when you run this command it will automatically deploy MySQL server for you, hence why we didn't install it in the previous step. You can choose an alternative password than the one listed below but remember it!
 
-	# /usr/bin/mysqladmin -u root password 'redhat'
 	# openstack-db --init --service keystone
 
 Keystone uses tokens to authenticate users, even when using username/passwords tokens are used. Once a users identity has been verified with an account/password pair, a short-lived token is issued, these tokens are used by OpenStack components whilst working on behalf of a user. When setting up Keystone we need to create a default administration token which is set in the /etc/keystone/keystone.conf file. We need to generate this and populate the configuration file with this value so that it persists, thankfully there's a simple way of doing this-
@@ -293,7 +292,7 @@ At this point, we can start the Keystone service and enable it at boot-time-
 
 Recall that Keystone provides the registry of services and their endpoints for interconnectivity, we need to start building up this registry and Keystone itself is not exempt from this list, many services rely on this entry-
 
-	# keystone service-create --name=keystone --type=identity --description="Keystone Identity Service"
+	# keystone service-create --name keystone --type identity --description "Keystone Identity Service"
 	+-------------+----------------------------------+
 	|   Property  |              Value               |
 	+-------------+----------------------------------+
@@ -503,6 +502,7 @@ Glance makes use of MySQL to store the glance-registry data, i.e. all of the ima
 	
 NOTE: If the above fails, you'll need to manually create the database...
 
+	# openstack-db --drop --service glance
 	# mysql -u root -p
 	(Enter your 'mysql root' password)
 	
