@@ -689,7 +689,7 @@ Next, install the Cinder components:
 
 Cinder uses a MySQL database to hold information about the volumes that it's managing, we'll simply add this database into the already existant MySQL deployment:
 
-	# openstack-db --init --service cinder --password <password>
+	# openstack-db --init --service cinder
 
 As with all other OpenStack services, Cinder uses Keystone for authentication, we'll need to configure this to communicate with Keystone running on openstack-controller. We can use the handy 'openstack-config' tool to make these changes for us:
 
