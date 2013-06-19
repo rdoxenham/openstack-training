@@ -847,7 +847,7 @@ In addition to 'br-int' being used for virtual machine mapping, any additional a
 In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
 	# ssh root@openstack-controller
-	# yum install openstack-quantum openvswitch -y
+	# yum install openstack-quantum openvswitch openstack-quantum-openvswitch -y
 	
 Add the integration bridge:
 
@@ -902,23 +902,25 @@ We can therefore unconfigure our eth0 device, as we'll be attaching this to the 
 	NM_CONTROLLED=no
 	BOOTPROTO=static
 	EOF
-
-Add the br-ex bridge:
+	
+Finally, create the 'br-ex' external bridge and attach our eth0 device into it:
 
 	# ovs-vsctl add-br br-ex
-
-Restart the network so that the bridge comes up as expected; you'll likely lose SSH connectivity at this point...
+	# ovs-vsctl add-port br-ex eth0
 	
+Note: This will hang at this point as it hasn't brought 'br-ex' up. You'll need to access the console to run the following:
+
+	(In console)
 	# service network restart
 	Shutting down interface eth0:                              [  OK  ]
 	Shutting down interface eth1:                              [  OK  ]
 	Shutting down loopback interface:                          [  OK  ]
-	[Hangs here]
+	Bringing up loopback interface:                            [  OK  ]
+	Bringing up interface br-ex:                               [  OK  ]
+	Bringing up interface eth0:                                [  OK  ]
+	Bringing up interface eth1:                                [  OK  ]
 	
-(Connect via the console)
-	# ovs-vsctl add-port br-ex eth0
-	
-Now you should be able to SSH back in...
+You should now be able to return to your SSH session.
 	
 To confirm that everything is as expected, you can check the output of 'ovs-vsctl show':
 
