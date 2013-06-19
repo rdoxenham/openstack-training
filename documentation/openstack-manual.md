@@ -1100,13 +1100,15 @@ Thankfully, the Open vSwitch configuration for the compute node is a lot simpler
 	(After the machine has rebooted)
 	# ssh root@openstack-compute1
 	
+	# yum install openstack-quantum openvswitch openstack-quantum-openvswitch -y
+	
 	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
 	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
 	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
 	
 Create the bridges like we did before, although this time we don't have to worry about eth0 as we're not configuring an external bridge... the l3-agent on the controller node does the routing for us, we just need to give our br-int access to eth1:
 
-	# yum install openstack-quantum -y
+	
 	
 	# cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1
 	DEVICE=eth1
