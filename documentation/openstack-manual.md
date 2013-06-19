@@ -602,6 +602,7 @@ As previously mentioned, images uploaded to Glance should be 're-initialised' or
 
 Firstly, we need to get access to an image, if you're following the training course, get hold of the RHEL 6.4 Cloud template from your instructor (this is slightly different to the original template provided as it has cloud-init already installed, more to come later).
 
+	(On your controller node)# yum install openssh-clients -y
 	(On your hypervisor host)# scp /path/to/rhel64-cloud.qcow2 root@192.168.122.101:/root
 
 Return back to your openstack-controller machine where you have your ssh session running. Let's verify that the disk image was copied across successfully and has the correct properties:
