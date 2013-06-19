@@ -505,6 +505,7 @@ NOTE: If the above fails, you'll need to manually create the database...
 	# openstack-config --set /etc/glance/glance-api.conf DEFAULT sql_connection mysql://glance:glance@localhost/glance
 	# openstack-config --set /etc/glance/glance-registry.conf DEFAULT sql_connection mysql://glance:glance@localhost/glance
 	
+	# service openstack-glance-api restart && service openstack-glance-registry restart
 	# glance-manage db_sync
 
 ##**Integrating Glance with Keystone**
