@@ -851,6 +851,7 @@ In this lab, we'll use the cloud controller to provide all of the Quantum servic
 	
 Add the integration bridge:
 
+	# service openvswitch start
 	# ovs-vsctl add-br br-int
 
 Add the bridge that maps OVS to the real world, note that we're using 'eth1' here as this network will only be used for inter-instance traffic...
@@ -1043,6 +1044,7 @@ Configure Keystone to provide authentication and an endpoint for Quantum:
 	
 Start the services and configure them to come up on boot:
 
+	# chkconfig openvswitch on
 	# service quantum-server start && chkconfig quantum-server on
 	# service quantum-l3-agent start && chkconfig quantum-l3-agent on
 	# service quantum-dhcp-agent start && chkconfig quantum-dhcp-agent on
