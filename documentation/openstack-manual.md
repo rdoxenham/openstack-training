@@ -847,7 +847,7 @@ In addition to 'br-int' being used for virtual machine mapping, any additional a
 In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
 	# ssh root@openstack-controller
-	# yum install openstack-quantum -y
+	# yum install openstack-quantum openvswitch -y
 	
 Add the integration bridge:
 
