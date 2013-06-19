@@ -137,6 +137,8 @@ To save time, we'll install a single virtual machine and just clone it afterward
 
 ##**Creating virtual machines**
 
+Only do this if you don't have the pre-built images...
+
 	# virt-install --name openstack-controller --ram 1000 --file /var/lib/libvirt/images/openstack-controller.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
 		--os-variant rhel6 --network network:default,mac=52:54:00:00:00:01
@@ -156,9 +158,7 @@ After the machine has finished installing it will automatically be shut-down, we
 
 	Clone 'openstack-compute1' created successfully.
 	
-As the compute-node is going to require more resources, at this point ensure that you increase the vCPU and memory count of your compute node:
-
-	# 
+----- END HERE -----
 
 As an *optional* step for convenience, we can leave the virtual machines as DHCP and manually configure the 'default' network within libvirt to present static addresses via DHCP. As we have manually assigned the MAC addresses for our virtual machines we can edit the default network configuration file as follows-
 
@@ -188,18 +188,6 @@ As an *optional* step for convenience, we can leave the virtual machines as DHCP
 Then, to save changes, run:
 
 	# virsh net-start default
-
-Note: It's possible to configure the guests manually with static IP addresses after the machine has booted up, note that you'll have to use virt-viewer to access the console first
-
-	# virt-viewer openstack-controller
-
-	-inside the guest-
-
-	# vi /etc/sysconfig/network-scripts/ifcfg-eth0
-
-	-or-
-
-	# system-config-network
 
 For ease of connection to your virtual machine instances, it would be prudent to add the machines to your /etc/hosts file-
 
