@@ -510,7 +510,7 @@ NOTE: If the above fails, you'll need to manually create the database...
 
 ##**Integrating Glance with Keystone**
 
-Before we start the Glance service, we need to configure it to speak to Keystone to manage authentication. We make heavy use of the openstack-config tool here for convenience although manually modifying the configuration files is also possible. We provide Glance with a username and password combination that has the 'admin' role, this is to check the validity of tokens provided to Glance.
+Before we use the Glance service, we need to configure it to speak to Keystone to manage authentication. We make heavy use of the openstack-config tool here for convenience although manually modifying the configuration files is also possible. We provide Glance with a username and password combination that has the 'admin' role, this is to check the validity of tokens provided to Glance.
 
 Firstly, we create a separate tenant to house our 'service users', i.e. the credentials used by the individual services.
 
@@ -556,8 +556,8 @@ Note: One additional configuration option change that would usually need to be m
 
 We can now start and enable these services upon boot:
 
-	# service openstack-glance-registry start && chkconfig openstack-glance-registry on
-	# service openstack-glance-api start && chkconfig openstack-glance-api on
+	# service openstack-glance-registry restart && chkconfig openstack-glance-registry on
+	# service openstack-glance-api restart && chkconfig openstack-glance-api on
 
 To complete the integration, a service and an associated end-point need to be created in Keystone:
 
