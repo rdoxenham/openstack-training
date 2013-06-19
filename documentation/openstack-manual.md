@@ -847,7 +847,7 @@ In addition to 'br-int' being used for virtual machine mapping, any additional a
 In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
 	# ssh root@openstack-controller
-	# yum install openstack-quantum openvswitch openstack-quantum-openvswitch -y
+	# yum install openstack-quantum openstack-quantum-openvswitch -y
 	
 Add the integration bridge:
 
@@ -1100,7 +1100,7 @@ Thankfully, the Open vSwitch configuration for the compute node is a lot simpler
 	(After the machine has rebooted)
 	# ssh root@openstack-compute1
 	
-	# yum install openstack-quantum openvswitch openstack-quantum-openvswitch -y
+	# yum install openstack-quantum openstack-quantum-openvswitch -y
 	
 	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
 	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
@@ -1179,7 +1179,7 @@ We need to deploy the Nova components on our first node that will provide the AP
 	# source ~/keystonerc_admin
 
 	# yum install openstack-nova -y
-	# openstack-db --init --service nova --password <password>
+	# openstack-db --init --service nova
 	
 	# keystone user-create --name nova --pass novapasswd
 	+----------+----------------------------------+
