@@ -1288,12 +1288,10 @@ We configure Nova on the compute node but literally only to provide compute reso
 
 	# ssh root@openstack-compute1
 
-	# yum install openstack-nova -y
-	# yum install python-cinderclient -y
+	# yum install openstack-nova-compute python-cinderclient libvirt -y
 
 Also, as this machine will provide resource, we need to ensure that libvirt is installed-
 
-	# yum install libvirt -y
 	# chkconfig libvirtd on && service libvirtd start
 
 	# scp root@openstack-controller:/etc/nova/nova.conf /etc/nova/nova.conf
@@ -1592,12 +1590,18 @@ Note that we've forwarded our network to push DNS requests out to our underlying
 	| tenant_id             | 97b43bd18e7c4f7ebc45b39b090e9265     |
 	+-----------------------+--------------------------------------+
 	
-Now let's connect the two networks together, firstly we need to set the gateway, i.e. the external network and then add an interface which is the subnet we're linking to (our internal network 30.0.0.0/24).
+Now let's connect the two networks together, firstly we need to set the gateway, i.e. the external network.
 
 	# quantum router-gateway-set router1 ext
 	Set gateway for router router1
 	
-	# quantum router-interface-add router1 0191c293-365d-4798-aa2d-f5afe47100c2
+Then add an interface which is the subnet we're linking to (our internal network 30.0.0.0/24). For this we need the subnet ID for 30.0.0.0/24 in our tenant:
+
+	# quantum subnet-list
+	
+Grab the ID for the subnet and use it in the following command:
+	
+	# quantum router-interface-add router1 df839eb2-8efc-413d-a19a-3e008da4858f
 	Added interface to router router1
 
 Every instance that starts will need to be assigned a private network to attach to, in our example it will be on 30.0.0.0/24, the network address is assigned via DHCP by dnsmasq (via quantum-dhcp-agent) running on our cloud controller. Note that all of the above is simplified by the OpenStack dashboard, which you'll see shortly.
