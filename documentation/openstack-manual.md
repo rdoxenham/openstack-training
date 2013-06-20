@@ -451,6 +451,7 @@ To accomodate massive scalability, OpenStack was built using AMQP-based messagin
 	# yum install qpid-cpp-server -y
 	# sed -i 's/auth=.*/auth=no/g' /etc/qpidd.conf
 	# service qpidd start && chkconfig qpidd on
+	# lokkit -p 5672:tcp
 
 
 #**Lab 4: Installation and configuration of Glance (Image Service)**
@@ -1100,7 +1101,7 @@ Thankfully, the Open vSwitch configuration for the compute node is a lot simpler
 	(After the machine has rebooted)
 	# ssh root@openstack-compute1
 	
-	# yum install openstack-quantum openstack-quantum-openvswitch -y
+	# yum install openstack-quantum openstack-quantum-openvswitch bridge-utils -y
 	
 	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
 	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
@@ -2025,7 +2026,7 @@ First, configure Nova so that it knows what to do when we start the metadata-api
 	
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host 192.168.122.101
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
-	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8775
+	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8700
 	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
 	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
 
@@ -2055,10 +2056,6 @@ Next, update the Nova configuration file on the controller to ensure it listens 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8700
 	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
 	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
-
-Enable the TCP port through the firewall:
-
-	# lokkit -p 8700:tcp
 	
 Start and enable the services:
 
