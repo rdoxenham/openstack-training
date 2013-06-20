@@ -1141,6 +1141,7 @@ Create the bridges like we did before, although this time we don't have to worry
 	
 Make sure the correct services are started and enabled:
 
+	# chkconfig openvswitch on
 	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
 	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
 	
