@@ -2021,14 +2021,6 @@ The data contained by the service is created by the users upon creation of an in
 The metadata API service sits on a designated node, in this lab we'll enable it on the cloud controller (openstack-controller). We need to change a few configuration options as well as start some services:
 
 	# ssh root@openstack-controller
-	
-First, configure Nova so that it knows what to do when we start the metadata-api service:
-	
-	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host 192.168.122.101
-	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
-	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8700
-	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
-	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
 
 Now configure the Quantum metadata agent, it needs to know how to communicate with Keystone:
 
