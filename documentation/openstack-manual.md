@@ -35,7 +35,7 @@ By undertaking this course you understand that I take no responsibility for any 
 
 ##**What to expect from the course**
 
-Upon completion of the course you should fully understand what OpenStack is designed to do, how the components/building-blocks fit together to provide consumable cloud resources and how to install/configure them. You should feel comfortable designing OpenStack-based architectures and how to position the technology. The course goes into a considerable amount of detail but is far from comprenensive; the target of the course is to provide a solid foundation that can be built upon based on the individuals requirements.
+Upon completion of the course you should fully understand what OpenStack is designed to do, how the components/building-blocks fit together to provide consumable cloud resources and how to install/configure them. You should feel comfortable designing OpenStack-based architectures and how to position the technology. The course goes into a considerable amount of detail but is far from comprehensive; the target of the course is to provide a solid foundation that can be built upon based on the individuals requirements.
 
 <!--BREAK-->
 
