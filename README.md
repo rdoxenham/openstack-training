@@ -1,4 +1,4 @@
-OpenStack SA Training
-==================
+OpenStack Havana Training Guide
+===============================
 
-This repository provides all of the necessary documentation, setup scripts and relevant presentations for the OpenStack SA Training sessions.
+[TODO]
