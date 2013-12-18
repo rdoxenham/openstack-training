@@ -1,6 +1,6 @@
-Title: OpenStack Training - Course Manual<br>
+Title: OpenStack Havana Training - Course Manual<br>
 Author: Rhys Oxenham <roxenham@redhat.com><br>
-Date: March 2013
+Date: January 2014
 
 #**Course Contents**#
 
@@ -9,7 +9,7 @@ Date: March 2013
 3. **Installation and configuration of Keystone (Identity Service)**
 4. **Installation and configuration of Glance (Image Service)**
 5. **Installation and configuration of Cinder (Volume Service)**
-6. **Installation and configuration of Quantum (Networking Services)**
+6. **Installation and configuration of Neutron (Networking Services)**
 7. **Installation and configuration of Nova (Compute Services)**
 8. **Installation and configuration of Horizon (OpenStack Frontend)**
 9. **Deployment of Instances**
@@ -27,28 +27,33 @@ Date: March 2013
 
 This manual assumes that you're attending instructor-led training classes and that this material be used as a step-by-step guide on how to successfully complete the lab objectives. Prior knowledge gained from the instructor presentations is highly recommended, however for those wanting to complete this training via their own self-learning, a description at each section is available as well as a copy of the course slides.
 
-The course was written with the assumption that you're wanting to deploy Red Hat OpenStack on-top of a Red Hat Enterprise Linux, e.g. Red Hat Enterprise Linux or Fedora, and is written specifically for Red Hat's enterprise OpenStack Distribution (http://www.redhat.com/openstack) although the vast majority of the concepts and instructions will apply to other distributions, including RDO.
+The course was written with the assumption that you're wanting to deploy OpenStack on-top of a Red Hat based distribution, e.g. Red Hat Enterprise Linux, Fedora, CentOS or Scientific Linux and is written specifically for Red Hat's OpenStack Distribution, Red Hat Enterprise Linux OpenStack Platform (RHEL OSP, http://www.redhat.com/openstack) although the vast majority of the concepts and instructions will apply to other OpenStack distributions, including RDO (http://openstack.redhat.com, a community-led Red Hat based distribution).
 
-The use of a Linux-based hypervisor (ideally using KVM/libvirt) is highly recommended although not essential, the requirements where necessary are outlined throughout the course but for deployment on alternative platforms it is assumed that this is already configured by yourself. The course advises that two virtual machines are created, each with their own varying degrees of compute resource requirements so please ensure that enough resource is available. Please note that this course helps you deploy a test-bed for knowledge purposes, it's extremely unlikely that any form of production environment would be deployed in this manor.
+The use of a Linux-based hypervisor (ideally using KVM/libvirt) is highly recommended although not essential. The requirements, where necessary, are outlined throughout the course, although please note that for those deploying on alternative platforms it is assumed that this is already configured by yourself. The course advises that two virtual machines are created, each with their own varying degrees of compute, storage and network resource requirements so please ensure that you have enough capacity/capability available. Please note that this course helps you deploy a test-bed for knowledge purposes, it's extremely unlikely that any form of production environment would be deployed in this manor, so please do not treat it as such.
 
 By undertaking this course you understand that I take no responsibility for any losses incurred and that you are following the instructions at your own free will. A working knowledge of virtualisation, the Linux command-line, networking, storage and scripting will be highly advantageous for anyone following this guide.
 
 ##**What to expect from the course**
 
-Upon completion of the course you should fully understand what OpenStack is designed to do, how the components/building-blocks fit together to provide consumable cloud resources and how to install/configure them. You should feel comfortable designing OpenStack-based architectures and how to position the technology. The course goes into a considerable amount of detail but is far from comprenensive; the target of the course is to provide a solid foundation that can be built upon based on the individuals requirements.
+Upon completion of the course you should fully understand what OpenStack is designed to do, how the components/building-blocks fit together to provide consumable cloud resources and how to install/configure them. You should feel comfortable designing OpenStack-based architectures and how to position the technology. The course goes into a considerable amount of detail but is far from comprehensive; the target of the course is to provide a solid foundation that can be built upon based on the individuals requirements.
+
+##**But what are we going to be doing?**
+
+We're going to be configuring three virtual machines on-top of a Linux-based (ideally) hypervisor to provide a test-bed OpenStack environment within a virtual construct. We'll then build up the environment from-scratch (i.e. no automated deployment tools - you're here to learn how it fits together, right?). We will use this environment to build up our understanding of OpenStack, it's networking and storage concepts in depth.
 
 <!--BREAK-->
 
 #**The OpenStack Project**
 
-OpenStack is an open-source Infrastructure-as-a-Service (IaaS) initiative for building and managing large groups of compute instances in an on-demand massively scale-out cloud computing environment. The OpenStack project, led by the OpenStack Foundation has many goals, most importantly is it's initiative to support interoperability between cloud services and to provide all of the building blocks required to establish a cloud that mimics what a public cloud offers you. The difference being, you get the benefits of being able to stand it up behind a corporate firewall.
+OpenStack is an open-source Infrastructure-as-a-Service (IaaS) initiative for building and managing large groups of compute instances in an on-demand, massively scale-out cloud computing environment. The OpenStack project, led by the OpenStack Foundation has many goals, most importantly is it's initiative to support interoperability between cloud services and to provide all of the building blocks required to establish a cloud that mimics what a public cloud, such as Amazon AWS, offers you. The difference being, you get the agility and flexibility benefits whilst being able to stand it up behind a corporate firewall.
 
-The OpenStack project has had a significant impact on the IT industry, its adoption has been very wide spread and has become the basis of the cloud offerings from vendors such as HP, IBM and Dell. Other organisations such as Red Hat, Ubuntu and Rackspace are putting together 'distributions' of OpenStack and offering it to their customers as a supported platform for building a cloud; it's truly seen as the "Linux of the Cloud". The project currently has contributions from developers all over the world, vendors are actively developing plugins and contributing code to ensure that OpenStack can exploit the latest features that their software/hardware exposes.
+OpenStack itself started off as a set of distinct projects by RackSpace and NASA although today such projects have evolved considerably and are under community control. There is a vendor-agnostic foundation that controls the strategic and technical direction of OpenStack as a whole, making sure that the interests of the project and the community rather than corporate interest is paramount.
 
-OpenStack is made up of many individual components in a modular architecture that can be put together to create different types of clouds depending on the requirements of the organisation, e.g. pure-compute or cloud storage.
+The OpenStack project has had a significant impact on the IT industry, its adoption has been very wide spread and has become the basis of the cloud offerings from vendors such as HP, IBM and Dell. Other organisations such as Red Hat, Ubuntu and Rackspace are putting together 'distributions' of OpenStack and offering it to their customers as a supported platform for building a cloud; seen by many as the "Linux of the Cloud". The project currently has contributions from developers all over the world, vendors are actively developing plug-ins and contributing code to ensure that OpenStack can exploit the latest features that their software/hardware provides.
 
-TODO: Finish this ;-)
+The project is currently on its ninth major release (Havana), with the tenth (Icehouse) scheduled to be released in April/May 2014. There are a number of individual components that make up OpenStack, many of which operate autonomously but collectively can combine to create a very feature-rich cloud platform. Each component provides a specific element of functionality within the cloud, e.g. one for managing compute, one for networking and one for authentication.
 
+OpenStack represents the shift from traditional enterprise virtualisation workloads towards cloud-enabled workloads, i.e. the move from stateful workloads in which the application SLA and performance is tied to the underlying machine and is usually wrapped up with high availability solutions over to the new-age scale-out and fault-tolerant type applications in which the SLA and performance is linked to a dynamically scaling set of machines. OpenStack simply provides a suitable platform for such workloads, one that accepts that failure is always possible and that can scale up/down easily and without disruption.
 
 <!--BREAK-->
 
@@ -56,7 +61,9 @@ TODO: Finish this ;-)
 #**Lab 1: Configuring your host machine for OpenStack**
 
 **Prerequisites:**
-* A physical machine installed with either Fedora 18/x86_64 or Red Hat Enterprise Linux 6/x86_64
+* A physical machine installed with either Fedora 19/x86_64 or Red Hat Enterprise Linux 6/x86_64
+* -or-
+* Choose your own adventure with a hypervisor capable of virtualising Red Hat Enterprise Linux 6.
 
 **Tools used:**
 * virsh
@@ -64,9 +71,13 @@ TODO: Finish this ;-)
 
 ##**Introduction**
 
-This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure. There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other (e.g. a libvirt-NAT interface) and an isolated network for inter-instance communication, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
+This first lab will prepare your local environment for deploying virtual machine instances that OpenStack will be installed onto; from a physical perspective this is considered an "all-in-one" solution, a single physical system where the virtual machines provide the infrastructure itself.
 
-Estimated completion time: 15 minutes
+There are a number of tasks that need to be carried out in order to prepare the environment; the OpenStack nodes will need a network to communicate with each other (e.g. a libvirt-NAT interface) and an isolated network for inter-instance communication, it will also be extremely beneficial to provide the nodes with access to package repositories via the Internet or repositories available locally, therefore a NAT based network is a great way of establishing network isolation (your hypervisor just becomes the gateway for your OpenStack nodes). The instructions configure a RHEL/Fedora based environment to provide this network configuration and make sure we have persistent addresses.
+
+Note: The networking requirements will become more aparent in future chapters.
+
+Estimated completion time: 20 minutes
 
 
 ##**Preparing the environment**
@@ -83,7 +94,7 @@ Next, ensure that libvirt and KVM are installed and running.
 
 	# yum install libvirt qemu-kvm virt-manager virt-install -y && chkconfig libvirtd on && service libvirtd start
 
-If you already have an existing virtual machine infrastructure present on your machine, you may want to back-up your configurations and ensure that virtual machines are shutdown to reduce contention for system resources. This guide assumes that you have completed this and you have a more-or-less vanilla libvirt configuration. 
+If you already have an existing virtual machine infrastructure present on your machine, you may want to back-up your configurations and ensure that virtual machines are shutdown to reduce contention for system resources. This guide assumes that you have completed this and you have a "more-or-less" vanilla libvirt configuration. 
 
 It's important that the 'default' network is defined in a specific way for the guide to be successful:
 
@@ -95,7 +106,7 @@ It's important that the 'default' network is defined in a specific way for the g
 	Autostart:      yes
 	Bridge:         virbr0
 
-If this is not present as above (with the exception of a different uuid), it's recommended that you backup your existing default network configuration and recreate it as follows-
+If this is not present as above (with the exception of a different uuid, of course), it's recommended that you backup your existing default network configuration and re-create it as follows-
 
 	# mkdir -p /root/libvirt-backup/ && mv /var/lib/libvirt/network/default.xml /root/libvirt-backup/
 	# virsh net-destroy default && virsh net-undefine default
@@ -122,7 +133,7 @@ Finally, ensure that the bridge is setup correctly on the host:
 
 ##**Introduction**
 
-OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing all of the functions, or a complete OpenStack cloud contained within itself. This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are two main 'roles' for a machine within the cluster, a 'cloud controller' and a 'compute node'. A 'cloud controller' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. Whilst a 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start instances.
+OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing ALL of the functions (a complete OpenStack cloud contained within itself). This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are a few main 'roles' for a node within the cluster, typical ones include- a 'cloud controller', a 'compute node', a 'network node' and a 'storage node'. A 'cloud controller' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. A 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start/stop instances. A 'network' node typically manages inbound and outbound network connectivity to instances and a 'storage node' is responsible for providing storage to instances, either object or block. 
 
 This guide establishes four distinct virtual machines which will make up the core components, their individual purposes will not be explained in this section, the purpose of this lab is to quickly provision these machines as the infrastructure that our OpenStack cluster will be based upon.
 
@@ -137,14 +148,14 @@ To save time, we'll install a single virtual machine and just clone it afterward
 
 ##**Creating virtual machines**
 
-Only do this if you don't have the pre-built images...
+Only do this if you *don't* have the pre-built images...
 
 	# virt-install --name openstack-controller --ram 1000 --file /var/lib/libvirt/images/openstack-controller.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
 		--os-variant rhel6 --network network:default,mac=52:54:00:00:00:01
 	# virt-viewer openstack-controller
 
-I would advise that you choose a basic or minimal installation option and don't install any window managers, as these are virtual machines we want to keep as much resource as we can available, plus a graphical view is not required. Partition layouts can be set to default at this stage also, just make sure the time-zone is set correctly and that you provide a root password. When asked for a hostname, I suggest you don't use anything unique, just specify "server" or "node" as we will be cloning and want things to be 
+I would advise that you choose a basic or minimal installation option and don't install any window managers, as these are virtual machines we want to keep as much resource as we can available, plus a graphical view is not required. Partition layouts can be set to default at this stage also, just make sure the time-zone is set correctly and that you provide a root password. When asked for a hostname, I suggest you don't use anything unique, just specify "server" or "node" as we will be cloning and will just wipe this.
 
 After the machine has finished installing it will automatically be shut-down, we have to 'sysprep' it to make sure that it's ready to be cloned, this removes any "hardware"-specific elements so that things like networking come up as if they were created individually. In addition, one step ensures that networking comes up at boot time which it won't do by default if it wasn't chosen in the installer.
 
@@ -823,7 +834,7 @@ Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying 
 	(Ctrl-C to quit)
 
 
-#**Lab 6: Installation and configuration of Quantum (Networking Service)**
+#**Lab 6: Installation and configuration of Neutron (Networking Service)**
 
 **Prerequisites:**
 * Keystone installed and configured as per Lab 3
@@ -831,21 +842,21 @@ Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying 
 
 ##**Introduction**
 
-Quantum is OpenStack's Networking service, although it's important to realise that the name 'Quantum' will likely be replaced with just 'OpenStack Networking', apparently down to a trademark infringement. The training will continue to use the Quantum terminology for now as documentation and commands still explicitly use 'neutron'. 
+Neutron is OpenStack's Networking service, although it's important to realise that the name 'Neutron' will likely be replaced with just 'OpenStack Networking', apparently down to a trademark infringement. The training will continue to use the Neutron terminology for now as documentation and commands still explicitly use 'neutron'. 
 
-Quantum provides an abstract virtual networking service, enabling administrators and end-users to manage virtual networks for their instances on-top of OpenStack, i.e. Networking-as-a-Service. Quantum simply provides an API for self-service and management but relies on underlying technologies for the actual implementation via Quantum-plugins. This training makes use of Open vSwitch, but there are many other plugins available upstream such as Nicira NVP, Cisco UCS, Brocade etc. Quantum allows cloud-tenants to create rich networking topologies in an 'over-cloud' including advanced networking services, e.g. LBaaS, VPNaaS and Firewall-aaS. 
+Neutron provides an abstract virtual networking service, enabling administrators and end-users to manage virtual networks for their instances on-top of OpenStack, i.e. Networking-as-a-Service. Neutron simply provides an API for self-service and management but relies on underlying technologies for the actual implementation via Neutron-plugins. This training makes use of Open vSwitch, but there are many other plugins available upstream such as Nicira NVP, Cisco UCS, Brocade etc. Neutron allows cloud-tenants to create rich networking topologies in an 'over-cloud' including advanced networking services, e.g. LBaaS, VPNaaS and Firewall-aaS. 
 
-Quantum replaces the initial nova-network component that provided networking to instances in OpenStack prior to Folsom, it overcomes limitations such as lack of true isolation (unless implementing VLANs) and networks being down to the cloud-provider to manage. It vastly enhances the ability to provide networking and places the control in the hands of the users. This lab will get you to implement a Quantum networking infrastructure as a pre-requisite to starting our first instances, we'll configure underlying networking devices and attach them into Open vSwitch for use within Quantum.
+Neutron replaces the initial nova-network component that provided networking to instances in OpenStack prior to Folsom, it overcomes limitations such as lack of true isolation (unless implementing VLANs) and networks being down to the cloud-provider to manage. It vastly enhances the ability to provide networking and places the control in the hands of the users. This lab will get you to implement a Neutron networking infrastructure as a pre-requisite to starting our first instances, we'll configure underlying networking devices and attach them into Open vSwitch for use within Neutron.
 
 ##**Preparing the Cloud Controller**
 
-We're going to be using Open vSwitch to provide the underlying networking infrastructure, this then attaches into Quantum via a plugin so that Quantum can call out to Open vSwitch to actually implement the networks required. When I say networks, what I really mean is tenant-networks, i.e. the networks virtually created by either the administrators of the cloud or the end-users. 
+We're going to be using Open vSwitch to provide the underlying networking infrastructure, this then attaches into Neutron via a plugin so that Neutron can call out to Open vSwitch to actually implement the networks required. When I say networks, what I really mean is tenant-networks, i.e. the networks virtually created by either the administrators of the cloud or the end-users. 
 
 Open vSwitch relies on 'OVS Bridges' to attach both physical network cards and virtual machine's NICs to, not to be confused with traditional Linux bridges. It uses 'br-int' as the integration bridge, it's where all virtual network cards for the respective instances running on that machine get attached into, this bridge is then linked into a physical adaptor to provide a bridge out into the real world, enabling connectivity between machines; for example, inter-instance communication or internet access. 
 
 In addition to 'br-int' being used for virtual machine mapping, any additional agents also get linked into this bridge, e.g. for DHCP or L3 routing, anything that needs to communicate with instances needs to route through this bridge. For external access, 'br-ex' is used to define a network device to provide external access to (and from) our instances.
 
-In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
+In this lab, we'll use the cloud controller to provide all of the Neutron services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
 	# ssh root@openstack-controller
 	# yum install openstack-neutron openstack-neutron-openvswitch -y
@@ -945,18 +956,18 @@ To confirm that everything is as expected, you can check the output of 'ovs-vsct
                 type: internal
     ovs_version: "1.9.0"
 
-Next we need to configure Quantum itself, there are a number of configuration files we need to setup:
+Next we need to configure Neutron itself, there are a number of configuration files we need to setup:
 
 	# neutron-server-setup
 	(Use openvswitch)
 	
-Let Quantum know that we're using Open vSwitch as our plugin and that we want to be able to use overlapping IPs, i.e. multiple tenants can have the same subnet ranges:
+Let Neutron know that we're using Open vSwitch as our plugin and that we want to be able to use overlapping IPs, i.e. multiple tenants can have the same subnet ranges:
 
-	# openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin neutron.plugins.openvswitch.ovs_neutron_plugin.OVSQuantumPluginV2
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin neutron.plugins.openvswitch.ovs_neutron_plugin.OVSNeutronPluginV2
 	# openstack-config --set /etc/neutron/neutron.conf DEFAULT ovs_use_veth True
 	# openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 	
-Quantum uses qpid for communication between the server and the agents, we already have one configured:
+Neutron uses qpid for communication between the server and the agents, we already have one configured:
 
 	# openstack-config --set /etc/neutron/neutron.conf DEFAULT rpc_backend neutron.openstack.common.rpc.impl_qpid
 	# openstack-config --set /etc/neutron/neutron.conf DEFAULT qpid_hostname 192.168.122.101
@@ -994,7 +1005,7 @@ Ensure that the Firewall options are configured correctly, i.e. to use iptables 
 
 	# openstack-config --set /etc/neutron/plugin.ini SECURITYGROUP firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
 	
-I mentioned previously that we configure Quantum to provide a number of additional agents to provide functionality such as DHCP and L3-routing to external networks, these need to be configured also.
+I mentioned previously that we configure Neutron to provide a number of additional agents to provide functionality such as DHCP and L3-routing to external networks, these need to be configured also.
 
 We configure the DHCP agent to use OVS:
 
@@ -1017,15 +1028,15 @@ As this configuration file is identical to the L3 one, we can simply copy them:
 	# cp /etc/neutron/dhcp_agent.ini /etc/neutron/l3_agent.ini
 	(y)
 	
-Configure Keystone to provide authentication and an endpoint for Quantum:
+Configure Keystone to provide authentication and an endpoint for Neutron:
 
 	# source keystonerc_admin
 	# keystone user-create --name neutron --pass neutronpasswd
 	# keystone user-role-add --user neutron --role admin --tenant services
 	
-	# keystone service-create --name neutron --type network --description "Quantum Network Service" 
+	# keystone service-create --name neutron --type network --description "Neutron Network Service" 
 	+-------------+----------------------------------+
-	| description |      Quantum Network Service     |
+	| description |      Neutron Network Service     |
 	|      id     | c12b2784b0734cdd8fafd8c8654deb1d |
 	|     name    |             neutron              |
 	|     type    |             network              |
@@ -1256,12 +1267,12 @@ What this configuration is describing is as follows-
 
 * The MySQL database (which holds the instance data) is located on openstack-controller
 * We want to use Libvirt for the Compute, but qemu based emulation (In physical you would use 'kvm' here)
-* We are not using nova-based firewalling, this is taken care of by Quantum
+* We are not using nova-based firewalling, this is taken care of by Neutron
 * We are using qpid as the backend messaging broker (and it sits on openstack-controller)
 * Cinder is the volume manager for providing persistent storage
 * Glance is providing the images and it sits on 192.168.122.101
 * The machine's IP address is 192.168.122.101 (openstack-controller)
-* We are using Quantum to provide network access
+* We are using Neutron to provide network access
 * And we're using Keystone for authentication.
 
 Note: Remember to change the keystone admin_password entry and the MySQL password to reflect your configuration.	
@@ -1409,7 +1420,7 @@ First, get the tenant-id for the 'services' tenant:
 	# keystone tenant-list | grep services | awk '{print $2;}'
 	aec5e4f4e53144fb828c22e77b1e620a
 	
-Then create the network with Quantum:
+Then create the network with Neutron:
 
 	# neutron net-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext --router:external=True
 	Created a new network:
@@ -1507,11 +1518,11 @@ Note: We've not explicity set-up SSL yet, this guide avoids the use of SSL, alth
 #**Lab 9: Deployment of Instances**
 
 **Prerequisites:**
-* All of the previous labs completed, i.e. Keystone, Cinder, Nova, Quantum and Glance installed
+* All of the previous labs completed, i.e. Keystone, Cinder, Nova, Neutron and Glance installed
 
 ##**Background Information**
 
-We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) Quantum, what we've configured so far is Quantum as it's replacing nova-network as of Grizzly, although it's still possible to use it. 
+We're going to be starting our first instances in this lab. There are a few key concepts that we must understand in order to fully appreciate what this lab is trying to achieve. Firstly, networking; this is a fundamental concept within OpenStack and is quite difficult to understand when first starting off. OpenStack networking provides two methods of getting network access to instances, 1) nova-network and 2) Neutron, what we've configured so far is Neutron as it's replacing nova-network as of Grizzly, although it's still possible to use it. 
 
 For an instance to start, it must be assigned a network to attach to. These are typically private networks, i.e. have no public connectivity and is primarily used for virtual machine interconnects and private networking. Within OpenStack we bridge the private network out to the real world via a public (or 'external') network, it is simply the network interface in which public traffic will connect into, and is typically where you'd assign "floating IP's", i.e. IP addresses that are dynamically assigned to instances so that external traffic can be routed through correctly. Instances don't actually have direct access to the public network interface, they only see the private network and the administrator is responsible for optionally connecting a virtual router to interlink the two networks for both external access and inbound access from outside the private network.
 
@@ -1818,7 +1829,7 @@ So far we've started instances, these instances have received private internal I
 
 As a recap, the cloud controller acts as a networking node in this configuration, via the L3-agent it provides the instances with both inbound and outbound networking using one or more physical interfaces (configured as 'br-int' and 'br-ex'). In a production environment a separate management network would be used for communication between the OpenStack components and an additional dedicated public network interface, completely isolated from the management and inter-instance networks.
 
-OpenStack allows us to assign 'floating IPs' to instances to allow network traffic from any external interface to be routed to a specific instance. The IP's assigned come directly from one or more external networks, thankfully we've already created one. Behind the scenes the node running the L3-agent listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Quantum allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
+OpenStack allows us to assign 'floating IPs' to instances to allow network traffic from any external interface to be routed to a specific instance. The IP's assigned come directly from one or more external networks, thankfully we've already created one. Behind the scenes the node running the L3-agent listens on an additional IP address and uses NAT to tunnel the traffic to the correct instance on the private network. Neutron allows us to define these floating IP's and it can be configured to automatically assign them on boot (in addition to the private network, of course) or you can choose to assign them dynamically via the command line tools. 
 
 ##**Creating Floating Addresses**
 
@@ -1847,7 +1858,7 @@ You can see that it's attached to our tenant, i.e. 'demo'.
 
 ##**Assigning an address**
 
-Next, we can assign our claimed IP address to an instance. Unfortunately the command-line tools could do with a bit of work to make them a lot easier to do this. To associate an IP address we need the floating-ip id and the Quantum port-id of our instances virtual NIC.
+Next, we can assign our claimed IP address to an instance. Unfortunately the command-line tools could do with a bit of work to make them a lot easier to do this. To associate an IP address we need the floating-ip id and the Neutron port-id of our instances virtual NIC.
 
 The first thing to do is check the IP address of our started instance:
 
@@ -1923,7 +1934,7 @@ Note: Trying to ping your floating IP will currently fail, see the next section 
 
 ##**OpenStack Security Groups**
 
-By default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Quantum ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
+By default, OpenStack Security Groups prevent any access to instances via the public network, including ICMP/ping! Therefore, we have to manually edit the security policy to ensure that the firewall is opened up for us. Let's add two rules, firstly for all instances to have ICMP and SSH access. By default, Neutron ships with a 'default' security group, it's possible to create new groups and assign custom rules to these groups and then assign these groups to individual servers. For this lab, we'll just configure the default group.
 
 First, enable ICMP for *every* node:
 
@@ -1944,7 +1955,7 @@ First, enable ICMP for *every* node:
 	| tenant_id         | 97b43bd18e7c4f7ebc45b39b090e9265     |
 	+-------------------+--------------------------------------+
 
-Within a few seconds (for the Quantum L3-agent on the controller node to pick the changes up) you should be able to ping your floating IP:
+Within a few seconds (for the Neutron L3-agent on the controller node to pick the changes up) you should be able to ping your floating IP:
 
 	# ping -c4 192.168.122.11
 	PING 192.168.122.11 (192.168.122.11) 56(84) bytes of data.
@@ -2003,7 +2014,7 @@ Let's clean-up this instance before we proceed with the next section:
 
 ##**Automating Floating IP Allocation**
 
-For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. Unfortunately in Grizzly/Quantum, it's not currently supported whereas it was with the previous nova-network implementation. Therefore the old section of this guide has been removed.
+For convenience, many people choose to configure OpenStack to automatically claim and assign floating IP addresses. Unfortunately in Grizzly/Neutron, it's not currently supported whereas it was with the previous nova-network implementation. Therefore the old section of this guide has been removed.
 
 
 #**Lab 11: Configuring the Metadata Service for Customisation**
@@ -2012,7 +2023,7 @@ For convenience, many people choose to configure OpenStack to automatically clai
 
 OpenStack provides a metadata service for instances to receive some instance-specific configuration after first-boot and mimics what public cloud offerings such as Amazon AWS/EC2 provide. A prime example of data contained in the metadata service is a public key, one that can be used to connect directly into an instance via ssh. Other examples include executable code ('user-data'), allocating system roles, security configurations etc. In this lab we'll do two things, register and use a public key for authentication and execute a post-boot script on our instances.
 
-OpenStack provides the metadata API via a RESTful interface, the API listens on a designated nide and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Quantum automatically routes all HTTP connections to this address to the Nova metadata-api via the neutron-metadata-agent service and is therefore aware of which instance made the connection; again, this is done via NAT.
+OpenStack provides the metadata API via a RESTful interface, the API listens on a designated nide and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Neutron automatically routes all HTTP connections to this address to the Nova metadata-api via the neutron-metadata-agent service and is therefore aware of which instance made the connection; again, this is done via NAT.
 
 The data contained by the service is created by the users upon creation of an instance, OpenStack provides multiple ways of including this data, dependent on the type of information being included. It's down to the creators of the VM image to configure the boot-up process so that it automatically connects into the metadata service and retrieves (and processes) the data. There are two primary ways of doing this, the first option is to handcrank a first-boot script that sifts through the metadata and applies any changes manually, the second is to use 'cloud-init', a package that understands the metadata service and knows how to make the required changes over a wide variety of Linux-based operating systems. For example, if a public key has been assigned to an instance, it will automatically download it and install it into the correct location.
 
@@ -2022,7 +2033,7 @@ The metadata API service sits on a designated node, in this lab we'll enable it 
 
 	# ssh root@openstack-controller
 
-Now configure the Quantum metadata agent, it needs to know how to communicate with Keystone:
+Now configure the Neutron metadata agent, it needs to know how to communicate with Keystone:
 
 	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT auth_url http://192.168.122.101:35357/v2.0/
 	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT auth_region regionOne
