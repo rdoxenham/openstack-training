@@ -831,7 +831,7 @@ Cinder logs itself at /var/log/cinder/*.log, so if you have any problems trying 
 
 ##**Introduction**
 
-Quantum is OpenStack's Networking service, although it's important to realise that the name 'Quantum' will likely be replaced with just 'OpenStack Networking', apparently down to a trademark infringement. The training will continue to use the Quantum terminology for now as documentation and commands still explicitly use 'quantum'. 
+Quantum is OpenStack's Networking service, although it's important to realise that the name 'Quantum' will likely be replaced with just 'OpenStack Networking', apparently down to a trademark infringement. The training will continue to use the Quantum terminology for now as documentation and commands still explicitly use 'neutron'. 
 
 Quantum provides an abstract virtual networking service, enabling administrators and end-users to manage virtual networks for their instances on-top of OpenStack, i.e. Networking-as-a-Service. Quantum simply provides an API for self-service and management but relies on underlying technologies for the actual implementation via Quantum-plugins. This training makes use of Open vSwitch, but there are many other plugins available upstream such as Nicira NVP, Cisco UCS, Brocade etc. Quantum allows cloud-tenants to create rich networking topologies in an 'over-cloud' including advanced networking services, e.g. LBaaS, VPNaaS and Firewall-aaS. 
 
@@ -848,7 +848,7 @@ In addition to 'br-int' being used for virtual machine mapping, any additional a
 In this lab, we'll use the cloud controller to provide all of the Quantum services, plus act as the 'networking' node, i.e. the one that provides DHCP and external access for our instances. Therefore we need to establish a number of OVS bridges:
 
 	# ssh root@openstack-controller
-	# yum install openstack-quantum openstack-quantum-openvswitch -y
+	# yum install openstack-neutron openstack-neutron-openvswitch -y
 	
 Add the integration bridge:
 
@@ -947,87 +947,87 @@ To confirm that everything is as expected, you can check the output of 'ovs-vsct
 
 Next we need to configure Quantum itself, there are a number of configuration files we need to setup:
 
-	# quantum-server-setup
+	# neutron-server-setup
 	(Use openvswitch)
 	
 Let Quantum know that we're using Open vSwitch as our plugin and that we want to be able to use overlapping IPs, i.e. multiple tenants can have the same subnet ranges:
 
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT core_plugin quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPluginV2
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT ovs_use_veth True
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT allow_overlapping_ips True
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin neutron.plugins.openvswitch.ovs_neutron_plugin.OVSQuantumPluginV2
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT ovs_use_veth True
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 	
 Quantum uses qpid for communication between the server and the agents, we already have one configured:
 
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT rpc_backend quantum.openstack.common.rpc.impl_qpid
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT qpid_hostname 192.168.122.101
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT qpid_port 5672
-	# openstack-config --set /etc/quantum/quantum.conf AGENT root_helper sudo quantum-rootwrap /etc/quantum/rootwrap.conf
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT rpc_backend neutron.openstack.common.rpc.impl_qpid
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT qpid_hostname 192.168.122.101
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT qpid_port 5672
+	# openstack-config --set /etc/neutron/neutron.conf AGENT root_helper sudo neutron-rootwrap /etc/neutron/rootwrap.conf
 	
-We'll set Keystone up later on, but we need to make entries into quantum.conf to represent these:
+We'll set Keystone up later on, but we need to make entries into neutron.conf to represent these:
 
-	# openstack-config --set /etc/quantum/quantum.conf DEFAULT auth_strategy keystone
-	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken auth_host 192.168.122.101
-	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_tenant_name services
-	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_user quantum
-	# openstack-config --set /etc/quantum/quantum.conf keystone_authtoken admin_password quantumpasswd
+	# openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+	# openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_host 192.168.122.101
+	# openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_tenant_name services
+	# openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_user neutron
+	# openstack-config --set /etc/neutron/neutron.conf keystone_authtoken admin_password neutronpasswd
 	
 Next, configure the plugin itself. If the symlink wasn't created for you, you'll need to set it up:
 
-	# ll /etc/quantum/plugin.ini
-	lrwxrwxrwx 1 root root 55 Jun 12 17:22 plugin.ini -> /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
+	# ll /etc/neutron/plugin.ini
+	lrwxrwxrwx 1 root root 55 Jun 12 17:22 plugin.ini -> /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini
 	
 If it doesn't exist:
 
-	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
+	# ln -s /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini /etc/neutron/plugin.ini
 	
 Then, make the necessary modifications, first set the database:
 
-	# openstack-config --set /etc/quantum/plugin.ini DATABASE sql_connection mysql://quantum:quantum@192.168.122.101/ovs_quantum
+	# openstack-config --set /etc/neutron/plugin.ini DATABASE sql_connection mysql://neutron:neutron@192.168.122.101/ovs_neutron
 	
 Next, configure OVS to use VLAN's to isolate the tenant networks from each other. Note that we're using VLANs here because RHEL currently doesn't support network tunnelling, e.g. GRE/VXLAN. We also configure a set of VLAN tag ranges and crucially MAP our br-eth1 device which we created previously to a 'physnet' network provider.
 
-	# openstack-config --set /etc/quantum/plugin.ini OVS tenant_network_type vlan
-	# openstack-config --set /etc/quantum/plugin.ini OVS network_vlan_ranges physnet1:1000:2999
-	# openstack-config --set /etc/quantum/plugin.ini OVS bridge_mappings physnet1:br-eth1
+	# openstack-config --set /etc/neutron/plugin.ini OVS tenant_network_type vlan
+	# openstack-config --set /etc/neutron/plugin.ini OVS network_vlan_ranges physnet1:1000:2999
+	# openstack-config --set /etc/neutron/plugin.ini OVS bridge_mappings physnet1:br-eth1
 	
 Ensure that the Firewall options are configured correctly, i.e. to use iptables to provide security for our instances:
 
-	# openstack-config --set /etc/quantum/plugin.ini SECURITYGROUP firewall_driver quantum.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
+	# openstack-config --set /etc/neutron/plugin.ini SECURITYGROUP firewall_driver neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
 	
 I mentioned previously that we configure Quantum to provide a number of additional agents to provide functionality such as DHCP and L3-routing to external networks, these need to be configured also.
 
 We configure the DHCP agent to use OVS:
 
-	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
+	# openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.OVSInterfaceDriver
 	
 To handle all routers, regardless of whether they have/require external connectivity:
 
-	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT handle_internal_only_routers True
+	# openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT handle_internal_only_routers True
 	
 Configure the external bridge network:
 
-	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT external_network_bridge br-ex
+	# openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT external_network_bridge br-ex
 	
 Configure the agent to allow for namespaces, i.e. to use overlapping IPs:
 
-	# openstack-config --set /etc/quantum/dhcp_agent.ini DEFAULT use_namespaces True
+	# openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT use_namespaces True
 	
 As this configuration file is identical to the L3 one, we can simply copy them:
 
-	# cp /etc/quantum/dhcp_agent.ini /etc/quantum/l3_agent.ini
+	# cp /etc/neutron/dhcp_agent.ini /etc/neutron/l3_agent.ini
 	(y)
 	
 Configure Keystone to provide authentication and an endpoint for Quantum:
 
 	# source keystonerc_admin
-	# keystone user-create --name quantum --pass quantumpasswd
-	# keystone user-role-add --user quantum --role admin --tenant services
+	# keystone user-create --name neutron --pass neutronpasswd
+	# keystone user-role-add --user neutron --role admin --tenant services
 	
-	# keystone service-create --name quantum --type network --description "Quantum Network Service" 
+	# keystone service-create --name neutron --type network --description "Quantum Network Service" 
 	+-------------+----------------------------------+
 	| description |      Quantum Network Service     |
 	|      id     | c12b2784b0734cdd8fafd8c8654deb1d |
-	|     name    |             quantum              |
+	|     name    |             neutron              |
 	|     type    |             network              |
 	+-------------+----------------------------------+
 	
@@ -1049,11 +1049,11 @@ Configure Keystone to provide authentication and an endpoint for Quantum:
 Start the services and configure them to come up on boot:
 
 	# chkconfig openvswitch on
-	# service quantum-server start && chkconfig quantum-server on
-	# service quantum-l3-agent start && chkconfig quantum-l3-agent on
-	# service quantum-dhcp-agent start && chkconfig quantum-dhcp-agent on
-	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
-	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
+	# service neutron-server start && chkconfig neutron-server on
+	# service neutron-l3-agent start && chkconfig neutron-l3-agent on
+	# service neutron-dhcp-agent start && chkconfig neutron-dhcp-agent on
+	# service neutron-openvswitch-agent start && chkconfig neutron-openvswitch-agent on
+	# service neutron-ovs-cleanup start && chkconfig neutron-ovs-cleanup on
 	
 ##**RHEL 6.4 Bug Workaround**
 
@@ -1101,12 +1101,12 @@ Thankfully, the Open vSwitch configuration for the compute node is a lot simpler
 	(After the machine has rebooted)
 	# ssh root@openstack-compute1
 	
-	# yum install openstack-quantum openstack-quantum-openvswitch bridge-utils -y
+	# yum install openstack-neutron openstack-neutron-openvswitch bridge-utils -y
 	
-	# scp root@openstack-controller:/etc/quantum/quantum.conf /etc/quantum/quantum.conf
-	# scp root@openstack-controller:/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini
-	# rm /etc/quantum/plugin.ini
-	# ln -s /etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini /etc/quantum/plugin.ini
+	# scp root@openstack-controller:/etc/neutron/neutron.conf /etc/neutron/neutron.conf
+	# scp root@openstack-controller:/etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini
+	# rm /etc/neutron/plugin.ini
+	# ln -s /etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini /etc/neutron/plugin.ini
 	
 Create the bridges like we did before, although this time we don't have to worry about eth0 as we're not configuring an external bridge... the l3-agent on the controller node does the routing for us, we just need to give our br-int access to eth1:
 
@@ -1143,8 +1143,8 @@ Create the bridges like we did before, although this time we don't have to worry
 Make sure the correct services are started and enabled:
 
 	# chkconfig openvswitch on
-	# service quantum-openvswitch-agent start && chkconfig quantum-openvswitch-agent on
-	# service quantum-ovs-cleanup start && chkconfig quantum-ovs-cleanup on
+	# service neutron-openvswitch-agent start && chkconfig neutron-openvswitch-agent on
+	# service neutron-ovs-cleanup start && chkconfig neutron-ovs-cleanup on
 	
 As with the openstack-controller, we need to workaround the current VLAN bug:
 
@@ -1234,14 +1234,14 @@ Then copy the following code into /etc/nova/nova.conf:
 	qpid_port=5672
 
 	glance_host=192.168.122.101
-	network_api_class = nova.network.quantumv2.api.API
-	quantum_admin_username = quantum
-	quantum_admin_password = quantumpasswd
-	quantum_admin_auth_url = http://192.168.122.101:35357/v2.0/
-	quantum_auth_strategy = keystone
-	quantum_admin_tenant_name = services
-	quantum_url = http://192.168.122.101:9696/
-	security_group_api = quantum
+	network_api_class = nova.network.neutronv2.api.API
+	neutron_admin_username = neutron
+	neutron_admin_password = neutronpasswd
+	neutron_admin_auth_url = http://192.168.122.101:35357/v2.0/
+	neutron_auth_strategy = keystone
+	neutron_admin_tenant_name = services
+	neutron_url = http://192.168.122.101:9696/
+	security_group_api = neutron
 
 	[keystone_authtoken]
 	admin_tenant_name = services
@@ -1411,7 +1411,7 @@ First, get the tenant-id for the 'services' tenant:
 	
 Then create the network with Quantum:
 
-	# quantum net-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext --router:external=True
+	# neutron net-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext --router:external=True
 	Created a new network:
 	+---------------------------+--------------------------------------+
 	| Field                     | Value                                |
@@ -1433,7 +1433,7 @@ Note: The provider details have been placed in there for us, it knows we're usin
 
 Next, create a subnet for this network, note that this corresponds to our libvirt network (192.168.122.0/24), note that if you're not using these network ranges/gateway, change as appropriate:
 
-	# quantum subnet-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext 192.168.122.0/24 --enable_dhcp=False --allocation-pool start=192.168.122.10,end=192.168.122.200 --gateway-ip 192.168.122.1
+	# neutron subnet-create --tenant-id aec5e4f4e53144fb828c22e77b1e620a ext 192.168.122.0/24 --enable_dhcp=False --allocation-pool start=192.168.122.10,end=192.168.122.200 --gateway-ip 192.168.122.1
 	Created a new subnet:
 	+------------------+-------------------------------------------------------+
 	| Field            | Value                                                 |
@@ -1455,14 +1455,14 @@ The allocation pool above is what we will eventually use as both our router rang
 
 Networks can be verified like so:
 
-	# quantum net-list
+	# neutron net-list
 	+--------------------------------------+------+-------------------------------------------------------+
 	| id                                   | name | subnets                                               |
 	+--------------------------------------+------+-------------------------------------------------------+
 	| 7382ead9-faba-405a-a78f-404c236c9334 | ext  | 89ee4bc1-073e-4ccd-a108-6c839dad011d 192.168.122.0/24 |
 	+--------------------------------------+------+-------------------------------------------------------+
 	
-	# quantum subnet-list
+	# neutron subnet-list
 	+--------------------------------------+------+------------------+-------------------------------------------------------+
 	| id                                   | name | cidr             | allocation_pools                                      |
 	+--------------------------------------+------+------------------+-------------------------------------------------------+
@@ -1520,7 +1520,7 @@ We've already created our external network and ensured that Open vSwitch knows w
 	# ssh root@openstack-controller
 	# source keystonerc_admin
 
-	# quantum net-show ext
+	# neutron net-show ext
 	+---------------------------+--------------------------------------+
 	| Field                     | Value                                |
 	+---------------------------+--------------------------------------+
@@ -1544,7 +1544,7 @@ This is great, but instances won't have direct access to this network, we need t
 The next step is for us to create a tenant network, whilst we can create them within the 'admin' tenant, let's use our 'demo' tenant previously created-
 
 	# source keystonerc_user
-	# quantum net-create int
+	# neutron net-create int
 	Created a new network:
 	+-----------------+--------------------------------------+
 	| Field           | Value                                |
@@ -1559,7 +1559,7 @@ The next step is for us to create a tenant network, whilst we can create them wi
 	| tenant_id       | 97b43bd18e7c4f7ebc45b39b090e9265     |
 	+-----------------+--------------------------------------+
 	
-	# quantum subnet-create int 30.0.0.0/24 --dns_nameservers list=true 192.168.122.1
+	# neutron subnet-create int 30.0.0.0/24 --dns_nameservers list=true 192.168.122.1
 	Created a new subnet:
 	+------------------+--------------------------------------------+
 	| Field            | Value                                      |
@@ -1579,7 +1579,7 @@ The next step is for us to create a tenant network, whilst we can create them wi
 	
 Note that we've forwarded our network to push DNS requests out to our underlying hypervisor, although we don't YET have connectivity to this network as there's no virtual router linking the two together, let's change that...
 
-	# quantum router-create router1
+	# neutron router-create router1
 	Created a new router:
 	+-----------------------+--------------------------------------+
 	| Field                 | Value                                |
@@ -1594,19 +1594,19 @@ Note that we've forwarded our network to push DNS requests out to our underlying
 	
 Now let's connect the two networks together, firstly we need to set the gateway, i.e. the external network.
 
-	# quantum router-gateway-set router1 ext
+	# neutron router-gateway-set router1 ext
 	Set gateway for router router1
 	
 Then add an interface which is the subnet we're linking to (our internal network 30.0.0.0/24). For this we need the subnet ID for 30.0.0.0/24 in our tenant:
 
-	# quantum subnet-list
+	# neutron subnet-list
 	
 Grab the ID for the subnet and use it in the following command:
 	
-	# quantum router-interface-add router1 df839eb2-8efc-413d-a19a-3e008da4858f
+	# neutron router-interface-add router1 df839eb2-8efc-413d-a19a-3e008da4858f
 	Added interface to router router1
 
-Every instance that starts will need to be assigned a private network to attach to, in our example it will be on 30.0.0.0/24, the network address is assigned via DHCP by dnsmasq (via quantum-dhcp-agent) running on our cloud controller. Note that all of the above is simplified by the OpenStack dashboard, which you'll see shortly.
+Every instance that starts will need to be assigned a private network to attach to, in our example it will be on 30.0.0.0/24, the network address is assigned via DHCP by dnsmasq (via neutron-dhcp-agent) running on our cloud controller. Note that all of the above is simplified by the OpenStack dashboard, which you'll see shortly.
 
 The second element to be aware of is images; Glance provides the repository of disk images, when the Nova scheduler instructs a compute-node to start an instance it retrieves the required disk image and stores it locally on the hypervisor, it then uses this image as a backing store for any number of instances' disk images; i.e. for each instance started, a delta/qcow2 is instantiated which only tracks the differences, the underlying disk image is untouched.
 
@@ -1829,7 +1829,7 @@ For this task you'll need an instance running first, if you don't have one runni
 
 OpenStack makes you 'claim' an IP from the available list of IP addresses for the tenant (project) you're currently running in before you can assign it to an instance, we specify the 'ext' network to claim from:
 
-	# quantum floatingip-create ext
+	# neutron floatingip-create ext
 	Created a new floatingip:
 	+---------------------+--------------------------------------+
 	| Field               | Value                                |
@@ -1860,7 +1860,7 @@ The first thing to do is check the IP address of our started instance:
 	
 Next, take the floating-IP id:
 
-	# quantum floatingip-list
+	# neutron floatingip-list
 	+--------------------------------------+------------------+---------------------+---------+
 	| id                                   | fixed_ip_address | floating_ip_address | port_id |
 	+--------------------------------------+------------------+---------------------+---------+
@@ -1869,17 +1869,17 @@ Next, take the floating-IP id:
 	
 Then, check the port-id for this assigned IP address:
 
-	# quantum port-list | grep 30.0.0.2 | awk '{print $2;}'
+	# neutron port-list | grep 30.0.0.2 | awk '{print $2;}'
 	d8233763-a214-47db-80bb-76885a06205b
 	
 Finally, associate them:
 
-	# quantum floatingip-associate 2f8a9079-55fa-44ab-b2c9-99685d7f3664 d8233763-a214-47db-80bb-76885a06205b
+	# neutron floatingip-associate 2f8a9079-55fa-44ab-b2c9-99685d7f3664 d8233763-a214-47db-80bb-76885a06205b
 	Associated floatingip 2f8a9079-55fa-44ab-b2c9-99685d7f3664
 	
 Verify using:
 
-	# quantum floatingip-list
+	# neutron floatingip-list
 	+--------------------------------------+------------------+---------------------+--------------------------------------+
 	| id                                   | fixed_ip_address | floating_ip_address | port_id                              |
 	+--------------------------------------+------------------+---------------------+--------------------------------------+
@@ -1927,7 +1927,7 @@ By default, OpenStack Security Groups prevent any access to instances via the pu
 
 First, enable ICMP for *every* node:
 
-	# quantum security-group-rule-create --protocol icmp --remote-ip-prefix 0.0.0.0/0 default
+	# neutron security-group-rule-create --protocol icmp --remote-ip-prefix 0.0.0.0/0 default
 	Created a new security_group_rule:
 	+-------------------+--------------------------------------+
 	| Field             | Value                                |
@@ -1964,7 +1964,7 @@ We can ping, but we can't SSH yet, as that's still not allowed:
 
 Next, let's try adding another rule, to allow SSH access for all instances in the group:
 
-	# quantum security-group-rule-create --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0.0.0.0/0 default
+	# neutron security-group-rule-create --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0.0.0.0/0 default
 	Created a new security_group_rule:
 	+-------------------+--------------------------------------+
 	| Field             | Value                                |
@@ -2012,7 +2012,7 @@ For convenience, many people choose to configure OpenStack to automatically clai
 
 OpenStack provides a metadata service for instances to receive some instance-specific configuration after first-boot and mimics what public cloud offerings such as Amazon AWS/EC2 provide. A prime example of data contained in the metadata service is a public key, one that can be used to connect directly into an instance via ssh. Other examples include executable code ('user-data'), allocating system roles, security configurations etc. In this lab we'll do two things, register and use a public key for authentication and execute a post-boot script on our instances.
 
-OpenStack provides the metadata API via a RESTful interface, the API listens on a designated nide and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Quantum automatically routes all HTTP connections to this address to the Nova metadata-api via the quantum-metadata-agent service and is therefore aware of which instance made the connection; again, this is done via NAT.
+OpenStack provides the metadata API via a RESTful interface, the API listens on a designated nide and awaits a connection from a client. Clients that want to access the metadata service *always* use a specific IP address (169.254.169.254), Quantum automatically routes all HTTP connections to this address to the Nova metadata-api via the neutron-metadata-agent service and is therefore aware of which instance made the connection; again, this is done via NAT.
 
 The data contained by the service is created by the users upon creation of an instance, OpenStack provides multiple ways of including this data, dependent on the type of information being included. It's down to the creators of the VM image to configure the boot-up process so that it automatically connects into the metadata service and retrieves (and processes) the data. There are two primary ways of doing this, the first option is to handcrank a first-boot script that sifts through the metadata and applies any changes manually, the second is to use 'cloud-init', a package that understands the metadata service and knows how to make the required changes over a wide variety of Linux-based operating systems. For example, if a public key has been assigned to an instance, it will automatically download it and install it into the correct location.
 
@@ -2024,37 +2024,37 @@ The metadata API service sits on a designated node, in this lab we'll enable it 
 
 Now configure the Quantum metadata agent, it needs to know how to communicate with Keystone:
 
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT auth_url http://192.168.122.101:35357/v2.0/
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT auth_region regionOne
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_tenant_name services
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_user quantum
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT admin_password quantumpasswd
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT auth_url http://192.168.122.101:35357/v2.0/
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT auth_region regionOne
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT admin_tenant_name services
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT admin_user neutron
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT admin_password neutronpasswd
 
 And it then needs to know how to connect out to Nova as this service is merely a Proxy:
 
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT nova_metadata_ip 192.168.122.101
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT nova_metadata_port 8700
-	# openstack-config --set /etc/quantum/metadata_agent.ini DEFAULT metadata_proxy_shared_secret metasecret123
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_ip 192.168.122.101
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_port 8700
+	# openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret metasecret123
 	
 The L3-agent sets up the routing for us, therefore we should specify how it should route the requests to the metadata-api;
 
-	#  openstack-config --set /etc/quantum/l3_agent.ini DEFAULT metadata_ip 192.168.122.101
-	#  openstack-config --set /etc/quantum/l3_agent.ini DEFAULT metadata_port 8700
+	#  openstack-config --set /etc/neutron/l3_agent.ini DEFAULT metadata_ip 192.168.122.101
+	#  openstack-config --set /etc/neutron/l3_agent.ini DEFAULT metadata_port 8700
 	
 Next, update the Nova configuration file on the controller to ensure it listens on this port for metadata:
 
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_host 192.168.122.101
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen 0.0.0.0
 	# openstack-config --set /etc/nova/nova.conf DEFAULT metadata_listen_port 8700
-	# openstack-config --set /etc/nova/nova.conf DEFAULT service_quantum_metadata_proxy True
-	# openstack-config --set /etc/nova/nova.conf DEFAULT quantum_metadata_proxy_shared_secret metasecret123
+	# openstack-config --set /etc/nova/nova.conf DEFAULT service_neutron_metadata_proxy True
+	# openstack-config --set /etc/nova/nova.conf DEFAULT neutron_metadata_proxy_shared_secret metasecret123
 	
 Start and enable the services:
 
-	# chkconfig quantum-metadata-agent on
-	# service quantum-metadata-agent start
+	# chkconfig neutron-metadata-agent on
+	# service neutron-metadata-agent start
 	# service openstack-nova-api restart
-	# service quantum-l3-agent restart
+	# service neutron-l3-agent restart
 	
 You can check the routing quite easily on the cloud controller, it shows that port 80 for 169.254.169.254 routes to the host at port 8700, just remember to check it on the correct namespace:
 
@@ -2104,7 +2104,7 @@ Based on your tenant, it will add that public key to be made available to all ru
 
 Note: cloud-init sometimes disables the root user logging in and enabled a 'cloud-user' account instead; please check your VM image when you create it (/etc/cloud/cloud.cfg).
 
-Next, launch an instance and check that you can connect in over SSH *without* it asking you for a password, if the metadata server worked correctly you should be able to. If not, connect in via the console and check for errors by running a 'wget http://169.254.169.254/latest/meta-data/instance-id' and tailing '/var/log/quantum/quantum-ns*'. All of this can be carried out either via the nova CLI commands, or via the dashboard.
+Next, launch an instance and check that you can connect in over SSH *without* it asking you for a password, if the metadata server worked correctly you should be able to. If not, connect in via the console and check for errors by running a 'wget http://169.254.169.254/latest/meta-data/instance-id' and tailing '/var/log/neutron/neutron-ns*'. All of this can be carried out either via the nova CLI commands, or via the dashboard.
 
 ##**Executing boot-time scripts**
 
