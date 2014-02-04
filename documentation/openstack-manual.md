@@ -255,6 +255,8 @@ Install the Red Hat OpenStack-specific Kernel and associated packages, this is d
 	# yum localinstall /path/to/rpms/*.rpm -y	
 	# yum update -y
 	
+If updates to the glibc or the kernel have been performed, then reboot the system to take them in account:
+
 	# reboot
 
 ##**Installing Keystone**
