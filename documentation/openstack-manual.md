@@ -61,9 +61,10 @@ OpenStack represents the shift from traditional enterprise virtualisation worklo
 #**Lab 1: Configuring your host machine for OpenStack**
 
 **Prerequisites:**
-* A physical machine installed with either Fedora 19/x86_64 or Red Hat Enterprise Linux 6/x86_64
+* A physical machine installed with either (recent) Fedora/x86_64 or Red Hat Enterprise Linux 6/x86_64
 * -or-
 * Choose your own adventure with a hypervisor capable of virtualising Red Hat Enterprise Linux 6.
+* Either way, at least 8GB RAM (16GB preferred)
 
 **Tools used:**
 * virsh
@@ -126,16 +127,16 @@ Finally, ensure that the bridge is setup correctly on the host:
 #**Lab 2: Deploying virtual machines**
 
 **Prerequisites:**
-* A physical machine configured with a NAT'd network allocated for hosting virtual machines as well as an isolated vSwitch network
+* A physical machine configured with a NAT'd network allocated for hosting virtual machines as well as an isolated "vSwitch" network
 
 **Tools used:**
-* virt command-line tools (e.g. virsh, virt-install, virt-viewer)
+* virt-* command-line tools (e.g. virsh, virt-install, virt-viewer)
 
 ##**Introduction**
 
 OpenStack is made up of a number of distinct components, each having their role in making up a cloud. It's certainly possible to have one single machine (either physical or virtual) providing ALL of the functions (a complete OpenStack cloud contained within itself). This, however, doesn't provide any form of high availability/resilience and doesn't make efficient use of resources. Therefore, in a typical deployment, multiple machines will be used, each running a set of components that connect to each other via their open API's. When we look at OpenStack there are a few main 'roles' for a node within the cluster, typical ones include- a 'cloud controller', a 'compute node', a 'network node' and a 'storage node'. A 'cloud controller' is responsible for orchestration of the cloud, responsibilities include scheduling of instances, running self-service portals, providing rich API's and operating a database store. A 'compute node' is actually very simple, it's main responsibility is to provide compute resource to the cluster and to accept requests to start/stop instances. A 'network' node typically manages inbound and outbound network connectivity to instances and a 'storage node' is responsible for providing storage to instances, either object or block. 
 
-This guide establishes four distinct virtual machines which will make up the core components, their individual purposes will not be explained in this section, the purpose of this lab is to quickly provision these machines as the infrastructure that our OpenStack cluster will be based upon.
+This guide establishes *three* distinct virtual machines which will make up the core components, their individual purposes will not be explained in this section, the purpose of this lab is to quickly provision these machines as the infrastructure that our OpenStack cluster will be based upon.
 
 Estimated completion time: 30 minutes
 
@@ -150,7 +151,7 @@ To save time, we'll install a single virtual machine and just clone it afterward
 
 Only do this if you *don't* have the pre-built images...
 
-	# virt-install --name openstack-controller --ram 1000 --file /var/lib/libvirt/images/openstack-controller.img \
+	# virt-install --name openstack-controller --ram 2000 --file /var/lib/libvirt/images/openstack-controller.img \
 		--cdrom /path/to/dvd.iso --noautoconsole --vnc --file-size 30 \
 		--os-variant rhel6 --network network:default,mac=52:54:00:00:00:01
 	# virt-viewer openstack-controller
@@ -164,10 +165,15 @@ After the machine has finished installing it will automatically be shut-down, we
 
 	# virt-edit -d openstack-controller /etc/sysconfig/network-scripts/ifcfg-eth0 -e 's/^ONBOOT=.*/ONBOOT="yes"/'
 	
-	# virt-clone -o openstack-controller -n openstack-compute1 -f /var/lib/libvirt/images/openstack-compute1.img --mac 52:54:00:00:00:02
-	Allocating 'openstack-compute1.img'
+	# virt-clone -o openstack-controller -n openstack-nethost -f /var/lib/libvirt/images/openstack-compute.img --mac 52:54:00:00:00:02
+	Allocating 'openstack-nethost.img'
 
-	Clone 'openstack-compute1' created successfully.
+	Clone 'openstack-compute' created successfully.
+	
+	# virt-clone -o openstack-controller -n openstack-compute -f /var/lib/libvirt/images/openstack-compute.img --mac 52:54:00:00:00:03
+	Allocating 'openstack-compute.img'
+
+	Clone 'openstack-compute' created successfully.
 	
 ----- END HERE -----
 
@@ -190,7 +196,8 @@ As an *optional* step for convenience, we can leave the virtual machines as DHCP
     		<dhcp>
       			<range start='192.168.122.2' end='192.168.122.9' />
 	      		<host mac='52:54:00:00:00:01' name='openstack-controller' ip='192.168.122.101' />
-      			<host mac='52:54:00:00:00:02' name='openstack-compute1' ip='192.168.122.102' />
+      			<host mac='52:54:00:00:00:02' name='openstack-nethost' ip='192.168.122.102' />
+      			<host mac='52:54:00:00:00:03' name='openstack-compute' ip='192.168.122.103' />
     		</dhcp>
   	</ip>
 
@@ -204,7 +211,8 @@ For ease of connection to your virtual machine instances, it would be prudent to
 
 	# cat >> /etc/hosts <<EOF
 	192.168.122.101 openstack-controller
-	192.168.122.102 openstack-compute1
+	192.168.122.102 openstack-nethost
+	192.168.122.103 openstack-compute
 	EOF
 
 Finally, start your first virtual machine that'll be used in the next lab:
@@ -248,13 +256,11 @@ Next you need to subscribe your system to both a Red Hat Enterprise Linux pool a
 We need to enable the OpenStack repositories next:
 
 	# yum install yum-utils -y
-	# yum-config-manager --enable rhel-server-ost-6-3-rpms --setopt="rhel-server-ost-6-3-rpms.priority=1"
+	# yum-config-manager --enable rhel-server-ost-6-4-rpms --setopt="rhel-server-ost-6-4-rpms.priority=1"
 	
-Install the Red Hat OpenStack-specific Kernel and associated packages, this is down to the standard Red Hat kernel not being shipped with namespace support. Please ask your instructor for these files, if you're not following an instructor-led training course then please ask your Red Hat representative.
+Next, update your system and reboot the machine-
 
-	# yum localinstall /path/to/rpms/*.rpm -y	
 	# yum update -y
-	
 	# reboot
 
 ##**Installing Keystone**
@@ -1110,7 +1116,7 @@ Install the Red Hat OpenStack-specific Kernel and associated packages, this is d
 Thankfully, the Open vSwitch configuration for the compute node is a lot simpler! We can copy the configuration files from the controller:
 
 	(After the machine has rebooted)
-	# ssh root@openstack-compute1
+	# ssh root@openstack-compute
 	
 	# yum install openstack-neutron openstack-neutron-openvswitch bridge-utils -y
 	
@@ -1299,7 +1305,7 @@ Note: The conductor service is brand-new to Grizzly, it takes away the ability f
 
 We configure Nova on the compute node but literally only to provide compute resources to the pool:
 
-	# ssh root@openstack-compute1
+	# ssh root@openstack-compute
 
 	# yum install openstack-nova-compute python-cinderclient libvirt -y
 
@@ -1323,7 +1329,7 @@ We can now start the required services on this node, for now we only need comput
 	# service openstack-nova-compute start
 	# chkconfig openstack-nova-compute on
 
-We're now finished with openstack-compute1 for now, we need to return to our cloud controller (openstack-controller) and setup the keystone service and endpoints:
+We're now finished with openstack-compute for now, we need to return to our cloud controller (openstack-controller) and setup the keystone service and endpoints:
 
 	# ssh root@openstack-controller
 	# source keystonerc_admin
@@ -1358,10 +1364,10 @@ Next, let's make sure that our integration into other components is working corr
 	# nova-manage service list
 	Binary           Host                        Zone             Status     State Updated_At
 	nova-scheduler   openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
-	nova-compute     openstack-compute1        	 nova             enabled    :-)   2013-06-09 00:13:10
+	nova-compute     openstack-compute        	 nova             enabled    :-)   2013-06-09 00:13:10
 	nova-conductor   openstack-controller        internal         enabled    :-)   2013-06-09 00:13:17
 
-We can see that nova-scheduler and nova-conductor is running on openstack-openstack-controller (where nova-api also runs, but isn't shown here) and nova-compute is running on openstack-openstack-compute1. This is all shared via AMQP/qpid. To test integration with Glance, for example:
+We can see that nova-scheduler and nova-conductor is running on openstack-openstack-controller (where nova-api also runs, but isn't shown here) and nova-compute is running on openstack-openstack-compute. This is all shared via AMQP/qpid. To test integration with Glance, for example:
 
 	# nova image-list
 	+--------------------------------------+------------------------------+--------+--------+
@@ -1409,7 +1415,7 @@ If you watch the nova logs on one of the compute nodes, you'll see the nodes che
 	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free ram (MB): 1460
 	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free disk (GB): 27
 	2013-06-31 13:06:10 1836 AUDIT nova.compute.resource_tracker [-] Free VCPUS: 2
-	2013-06-31 13:06:10 1836 INFO nova.compute.resource_tracker [-] Compute_service record updated for openstack-compute1 
+	2013-06-31 13:06:10 1836 INFO nova.compute.resource_tracker [-] Compute_service record updated for openstack-compute 
 	2013-06-31 13:06:10 1836 INFO nova.compute.manager [-] Updating host status
 
 Finally, we need to configure our networks. We first create an external network which is owned by the 'services' tenant, this is the network that will be used to provide external connectivity to our instances. It's prudent to create this via the command-line:
@@ -1762,7 +1768,7 @@ On the cloud controller we need to start and enable two services for VNC to work
 
 Finally, restart the compute services on the the compute-node:
 
-	# ssh root@openstack-compute1 service openstack-nova-compute restart
+	# ssh root@openstack-compute service openstack-nova-compute restart
 
 VNC consoles are only available to instances created when 'vnc_enabled = True' is configured in /etc/nova/nova.conf, therefore we have to create a new instance to verify it's working correctly:
 
